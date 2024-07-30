@@ -759,7 +759,7 @@ int main(int argc, char** argv)
 		memset(&addr_in, 0, sizeof(addr_in));
 		addr_in.sin_family = AF_INET;
 		addr_in.sin_port = htons(srcPort + i);
-		addr_in.sin_addr.s_addr = inet_addr("192.168.10.116");
+		addr_in.sin_addr.s_addr = inet_addr("172.16.0.13");
 
 
 		if (bind(fd, (struct sockaddr *) &addr_in, sizeof(addr_in)) != 0) {
@@ -805,7 +805,7 @@ int main(int argc, char** argv)
 				test_ndping(fd, dest, buffer);
 			} else if (strcmp(argv[nextArg], "tcpping") == 0) {
 				fd = socket(AF_INET, SOCK_STREAM, 0);
-				//printf("call tcpping\n");
+				printf("call tcpping\n");
 				test_ndping(fd, dest, buffer);
 			} else if (strcmp(argv[nextArg], "ndpingpong") == 0) {
 				//printf("call ndpingpong\n");
