@@ -391,7 +391,7 @@ void test_ndping_send(int fd, struct sockaddr *dest)
 {
 	//struct sockaddr_in* in = (struct sockaddr_in*) dest;
 	// uint32_t buffer_size = 10000000;
-	char *buffer = (char*)malloc(1000000);
+	char *buffer = (char*)malloc(10000000);
 	// uint64_t flow_size = 10000000000000;
 	int times = 60;
 	int flag = 0;

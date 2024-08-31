@@ -338,6 +338,7 @@ void test_ndping(int fd, struct sockaddr *dest, char* buffer)
 {
 	//struct sockaddr_in* in = (struct sockaddr_in*) dest;
 	uint32_t buffer_size = 10000000;
+	//更改：尝试将buffer_size从原来的10000000改小
 	// uint64_t flow_size = 10000000000000;
 	int times = 60;
 	uint64_t write_len = 0;
@@ -346,11 +347,12 @@ void test_ndping(int fd, struct sockaddr *dest, char* buffer)
 		printf("Couldn't connect to dest %s\n", strerror(errno));
 		exit(1);
 	}
-	//printf("connect done\n");
+	printf("connect done\n");
 	    // for (int i = 0; i < count * 100; i++) {
 		while(1) {
-
+			//printf("start\n");
 	    	int result = write(fd, buffer, buffer_size);	
+			//printf("%d bytes written successfully!\n",result);
 			uint64_t end = rdtsc();
 
 			if( result < 0 ) {
