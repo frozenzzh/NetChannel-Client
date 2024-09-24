@@ -77,7 +77,7 @@ const struct proto_ops nd_dgram_ops = {
 };
 // EXPORT_SYMBOL(inet_dgram_ops);
 
-struct proto nd_prot = {
+struct proto nd_prot = {        //proto结构体的实例化，其中proto是Linux内核中的一个网络协议结构体，定义了与传输层协议相关的操作和属性。
     .name           = "ND",
     .owner          = THIS_MODULE,
     .close          = nd_lib_close,
@@ -265,12 +265,12 @@ static struct ctl_table_header *nd_ctl_header;
 void nd_params_init(struct nd_params* params) {
     params->nd_add_host = 0;
     params->nd_num_queue = 1;
-    params->nd_num_dc_thread = 1;
+    params->nd_num_dc_thread = 1;//data copy thread，这里为什么仅仅设置1个？？
     params->nd_host_added = 0;
     params->nd_debug = 0;
-    params->nr_cpus = num_online_cpus();
-    params->nr_nodes = num_online_nodes();
-    params->ldcopy_tx_inflight_thre = ND_MAX_SKB_LEN * 12;
+    params->nr_cpus = num_online_cpus();//系统中实际可以使用的CPU数量，为48
+    params->nr_nodes = num_online_nodes();//系统中实陃可以使用的NUMA节点数量，为2
+    params->ldcopy_tx_inflight_thre = ND_MAX_SKB_LEN * 12;//发送时正在传输的阈值？？
     params->ldcopy_rx_inflight_thre = ND_MAX_SKB_LEN * 4;
     params->ldcopy_min_thre = ND_MAX_SKB_LEN;
     params->match_socket_port = 3000;
@@ -288,7 +288,7 @@ void nd_params_init(struct nd_params* params) {
     params->remote_ips[0] = "172.16.0.13";
     params->remote_ips[1] = "172.16.0.14";
 
-    params->data_cpy_core = 0;
+    params->data_cpy_core = 0;//初始的用于data copy的核的编号？用于round_robin来减吗？
     params->total_channels = 16;
     /* start index of latency channel index */
     params->lat_channel_idx = 8;
@@ -354,7 +354,7 @@ void nd_sysctl_changed(struct nd_params *params)
  * nd_load() - invoked when this module is loaded into the Linux kernel
  * Return: 0 on success, otherwise a negative errno.
  */
-static int __init nd_load(void) {
+static int __init nd_load(void) {//模块初始化
         int status;
         // struct timespec ts;
         // struct test_element e1, e2, e3, e4, e5;

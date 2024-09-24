@@ -74,7 +74,7 @@ EXPORT_SYMBOL(sysctl_nd_mem);
 atomic_long_t nd_memory_allocated;
 EXPORT_SYMBOL(nd_memory_allocated);
 
-struct nd_params nd_params;
+struct nd_params nd_params;//这里具体的数在nd_impl.h中被extern引用了，之后在nd_plumbing.c中的__init部分被初始化
 EXPORT_SYMBOL(nd_params);
 
 struct inet_hashinfo nd_hashinfo;
@@ -87,25 +87,28 @@ EXPORT_SYMBOL(nd_hashinfo);
 
 static inline bool page_is_mergeable(const struct bio_vec *bv,
 		struct page *page, unsigned int len, unsigned int off,
-		bool *same_page)
+		bool *same_page)//?????
 {
-	size_t bv_end = bv->bv_offset + bv->bv_len;
-	phys_addr_t vec_end_addr = page_to_phys(bv->bv_page) + bv_end - 1;
+	size_t bv_end = bv->bv_offset + bv->bv_len;//页面中数据结尾在页面中的偏移量
+	phys_addr_t vec_end_addr = page_to_phys(bv->bv_page) + bv_end - 1;//获取页面的物理地址
+	//以上使用物理地址是因为有可能有不同的虚拟地址对应于同一个物理地址？？？
 	phys_addr_t page_addr = page_to_phys(page);
 
-	if (vec_end_addr + 1 != page_addr + off)
+	if (vec_end_addr + 1 != page_addr + off)//两个在地址上不连续，这里通常只考虑连续的顺序合并？？？
 		return false;
 	// if (xen_domain() && !xen_biovec_phys_mergeable(bv, page))
 	// 	return false;
-
-	*same_page = ((vec_end_addr & PAGE_MASK) == page_addr);
+	//以下为地址连续的情况，判断是否在同一个页面中
+	*same_page = ((vec_end_addr & PAGE_MASK) == page_addr);//判断bv的结束地址是否与page的开始地址在同一个页面中
 	if (*same_page)
 		return true;
 	return (bv->bv_page + bv_end / PAGE_SIZE) == (page + off / PAGE_SIZE);
 }
 
+//__nd_try_merge_page(bv_arr, nr_segs, page, len, offset, &same_page)
+//参数分别表示bio_vec数组，bio_vec数组的长度，新的页面，新的页面的长度，新的页面的偏移量，是否是同一个页面
 bool __nd_try_merge_page(struct bio_vec *bv_arr, int nr_segs,  struct page *page,
-		unsigned int len, unsigned int off, bool *same_page)
+		unsigned int len, unsigned int off, bool *same_page)//判断一个新的页面是否与之前的页面是同一个页面
 {
 	if (nr_segs > 0) {
 		struct bio_vec *bv = &bv_arr[nr_segs - 1];
@@ -115,15 +118,16 @@ bool __nd_try_merge_page(struct bio_vec *bv_arr, int nr_segs,  struct page *page
 			// 	*same_page = false;
 			// 	return false;
 			// }
-			bv->bv_len += len;
+			bv->bv_len += len;//如果可以合并，更新上一个的长度
 			return true;
 		}
 	}
 	return false;
 }
 
-static ssize_t nd_dcopy_iov_init(struct msghdr *msg, struct iov_iter *iter, struct bio_vec *vec_p,
-	u32 bytes, int max_segs) {
+//blen = nd_dcopy_iov_init(msg, &biter, bv_arr, bsize, max_segs);
+static ssize_t nd_dcopy_iov_init(struct msghdr *msg, struct iov_iter *iter, struct bio_vec *vec_p, u32 bytes, int max_segs) {
+	//初始化 I/O 向量（I/O vector），用于远程数据复制过程，从msg中获取用户空间的数据，锁定（固定）这些数据所在的物理内存页，生成用于远程传输的 I/O 向量结构
 	ssize_t copied, offset, left;
 	struct bio_vec *bv_arr;
 	struct page *pages[MAX_PIN_PAGES];
@@ -139,32 +143,35 @@ static ssize_t nd_dcopy_iov_init(struct msghdr *msg, struct iov_iter *iter, stru
 	bv_arr = vec_p;
 	// pr_info("reach here:%d\n",  __LINE__);
 
-	copied = iov_iter_get_pages(&msg->msg_iter, pages, bytes, max_segs,
-					    &offset);
+	copied = iov_iter_get_pages(&msg->msg_iter, pages, bytes, max_segs, &offset);
+	//将msg->msg_iter所指向的页面固定在内核中，固定的页面用pages指针数组保存
+	//返回值为实际获取的字节数量，之后被固定住的页面需要通过put_page进行手动释放
 	// pr_info("reach here:%d\n",  __LINE__);
-	if(copied < 0)
-		WARN_ON(true);
+	if(copied < 0) WARN_ON(true);
+
 	for (left = copied, i = 0; left > 0; left -= len, i++) {
 		struct page *page = pages[i];
 
-		len = min_t(size_t, PAGE_SIZE - offset, left);
+		len = min_t(size_t, PAGE_SIZE - offset, left);//计算当前页面剩余数据量，取当前页和总的剩余数据量的最小值
 
 		if (__nd_try_merge_page(bv_arr, nr_segs, page, len, offset, &same_page)) {
 			if (same_page)
-				put_page(page);
+				put_page(page);//如果是同一个页面，释放多余的页面
 			// pr_info("merge page\n");
-		} else {
+		} else {//不为同一个页面，新建一个bio_vec，具体为指向bv_arr末尾的一片空间，并在该空间上填充相应的信息
 			struct bio_vec *bv = &bv_arr[nr_segs];
 			bv->bv_page = page;
 			bv->bv_offset = offset;
 			bv->bv_len = len;
 			nr_segs++;
 		}
-		offset = 0;
+		offset = 0;//除了第一个页面之后offset为0
 	}
 	// pr_info("advance:%ld\n", copied);
-	iov_iter_bvec(iter, WRITE, bv_arr, nr_segs, copied);
-	iov_iter_advance(&msg->msg_iter, copied);
+	iov_iter_bvec(iter, WRITE, bv_arr, nr_segs, copied);//用于初始化iov_iter，使其能够表示一个bvec类型的I/O向量
+	//将iov_iter结构体初始化为一个 bvec 类型的 I/O 向量迭代器
+	
+	iov_iter_advance(&msg->msg_iter, copied);//将msg_iter前进copied个字节，表示已经处理了copied个字节的数据
 	// kfree(pages);
 	// pr_info("kfree:%ld\n", __LINE__);
 
@@ -1672,11 +1679,12 @@ EXPORT_SYMBOL(nd_ioctl);
 // // 	goto out;
 // }
 
-int nd_recvmsg_new_2(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
-		int flags, int *addr_len)
-{
 
-	struct nd_sock *dsk = nd_sk(sk);
+//接收消息代码
+int nd_recvmsg_new_2(struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len)
+{//实际上是套接字层读取然后向应用层交付的？？？？
+
+	struct nd_sock *dsk = nd_sk(sk);//将传入的sk转换为nd_sock结构（自定义协议的套接字扩展）
 	int copied = 0;
 	// u32 peek_seq;
 	// u32 *seq;
@@ -1696,20 +1704,23 @@ int nd_recvmsg_new_2(struct sock *sk, struct msghdr *msg, size_t len, int nonblo
 	int next_cpu;
 	bool in_remote_cpy;
 	target = sock_rcvlowat(sk, flags & MSG_WAITALL, len);
+	//确定当前接收操作的最小字节数，len为期望接收的数据，如果flags中MSG_WAITALL位被置为1，则返回len，否则返回sk->sk_rcvlowat和len中的最小值
 
-	if (sk_can_busy_loop(sk) && skb_queue_empty_lockless(&sk->sk_receive_queue) &&
-	    (sk->sk_state == ND_ESTABLISH))
+	//如果当前套接字处于ND_ESTABLISH状态（连接建立），且接收队列为空，并且可以进入忙等待（不睡眠或者阻塞，而是一直轮询）则调用sk_busy_loop等待收包
+	if (sk_can_busy_loop(sk) && skb_queue_empty_lockless(&sk->sk_receive_queue) && (sk->sk_state == ND_ESTABLISH))
 		sk_busy_loop(sk, nonblock);
 
-	lock_sock(sk);
-	err = -ENOTCONN;
-
+	lock_sock(sk);//锁定套接字防止并发问题
+	err = -ENOTCONN;//套接字未连接错误码
 
 	// cmsg_flags = tp->recvmsg_inq ? 1 : 0;
 	timeo = sock_rcvtimeo(sk, nonblock);
+	//用于计算接收数据时的超时时间。它根据传入的套接字状态和是否为非阻塞模式，决定接收操作的等待时间
+	//该函数返回的是一个 long 类型的值，表示接收数据的超时时间，以“内核 jiffies”为单位
+	//nonblock为真，表示以非阻塞模式运行，超时时间通常设置为 0，如果没有数据可接收，操作将立即返回
+	//nonblock为假，表示允许阻塞，超时时间由套接字的接收超时设置决定。它通常根据套接字的 SO_RCVTIMEO 选项（接收超时）来确定。
 
-	if (sk->sk_state == ND_LISTEN)
-		goto out;
+	if (sk->sk_state == ND_LISTEN) goto out;
 
 	/* init bvec page */	
 	// bv_arr = kmalloc(MAX_PIN_PAGES * sizeof(struct bio_vec), GFP_KERNEL);
@@ -1718,21 +1729,26 @@ int nd_recvmsg_new_2(struct sock *sk, struct msghdr *msg, size_t len, int nonblo
 	// bremain -= blen;
 	
 	/* set nxt_dcopy_cpu to be -1 */
-	in_remote_cpy = false;
-	dsk->receiver.nxt_dcopy_cpu = nd_params.data_cpy_core;
+	in_remote_cpy = false;//标识是否正在使用远程拷贝
+	dsk->receiver.nxt_dcopy_cpu = nd_params.data_cpy_core;//这里dsk和sk是同一个结构体，只是类型不同，那为什么不直接对sk进行操作呢？？？
+	//获得用于数据拷贝的CPU核心编号，nd_params.data_cpy_core被初始化为0号CPU
 
 	// seq = &dsk->receiver.copied_seq;
 	do {
 		u32 offset;
 		/* Next get a buffer. */
 
-		last = skb_peek_tail(&sk->sk_receive_queue);
+		last = skb_peek_tail(&sk->sk_receive_queue);//？？？？有什么用？？？
+		//是从sk_buff_head队列中获取最后的sk_buff 数据包，不会修改队列本身，只是返回了尾部的缓冲区指针
 		skb_queue_walk_safe(&sk->sk_receive_queue, skb, tmp) {
+		//遍历接收队列，但是仅仅能保证在仅可能删除当前节点下是安全的，删除next或者在并发条件下都不能保证是安全的
 			last = skb;
 
 			/* Now that we have two receive queues this
 			 * shouldn't happen.
 			 */
+			//copied_seq通常表示已经从接收缓冲区（sk_buff，简称 skb）成功复制到用户空间的数据序列号，通常是一个全局计数器
+			//TCP协议的receiver_queue应该是保序的，所以copied_seq应该是大于等于第一个skb的sqeq
 			if (WARN(before((u32)atomic_read(&dsk->receiver.copied_seq), ND_SKB_CB(skb)->seq),
 				 "ND recvmsg seq # bug: copied %X, seq %X, rcvnxt %X, fl %X\n",
 				 (u32)atomic_read(&dsk->receiver.copied_seq), ND_SKB_CB(skb)->seq, (u32)atomic_read(&dsk->receiver.rcv_nxt),
@@ -1741,7 +1757,7 @@ int nd_recvmsg_new_2(struct sock *sk, struct msghdr *msg, size_t len, int nonblo
 
 			offset = (u32)atomic_read(&dsk->receiver.copied_seq) - ND_SKB_CB(skb)->seq;
 
-			if (offset < skb->len) {
+			if (offset < skb->len) {//此时这个数据包还有内容没有读取完，对其进行处理
 				goto found_ok_skb; 
 			}
 			else {
@@ -1749,7 +1765,7 @@ int nd_recvmsg_new_2(struct sock *sk, struct msghdr *msg, size_t len, int nonblo
 			}
 		}
 
-
+		//此时不再有数据包需要进行拷贝处理，现在等待所有数据包拷贝完成之后进行交付
 		/* ToDo: we have to check whether pending requests are done */
 		/* Well, if we have backlog, try to process it now yet. */
 
@@ -1810,16 +1826,14 @@ int nd_recvmsg_new_2(struct sock *sk, struct msghdr *msg, size_t len, int nonblo
 
 found_ok_skb:
 		/* Ok so how much can we use? */
-		used = skb->len - offset;
+		used = skb->len - offset;//当前skb内剩余需要拷贝长度
+		if (len < used) used = len;//根据目前的最大拷贝长度len进行调整，取二者中较小的，得到当前skb中剩余需要拷贝的数据长度
 
-		if (len < used) {
-			used = len;
-		}
 		/* decide to do local or remote data copy*/
-		if(blen == 0) {
+		if(blen == 0) {//blen究竟有什么用？？？？
 			ssize_t bsize = len;
 			/* the same skb can either do local or remote but not both */
-			if(in_remote_cpy && offset != 0) {
+			if(in_remote_cpy && offset != 0) {//in_remote_cpy初始为false
 				bsize =  min_t(ssize_t, bsize, used);
 				goto pin_user_page;
 			}
@@ -1827,25 +1841,28 @@ found_ok_skb:
 			/* check the current CPU util */
 			if(atomic_read(&dsk->receiver.in_flight_copy_bytes) > nd_params.ldcopy_rx_inflight_thre || 
 				copied <  nd_params.ldcopy_min_thre || nd_params.nd_num_dc_thread == 0){
+				//如果远程拷贝的数据量大于阈值，或者拷贝的内容小于最小的阈值，或者没有用于数据拷贝的线程，选择本地拷贝
+				//远程数据拷贝可能会有上下文的切换开销？？？所有不适合在负载较大的情况下使用？？？
 				/* do local */
 				in_remote_cpy = false;
 				goto local_copy;
 			}
 
+			//进行远程data copy
 			/* set up the remote data copy core and state */
-			next_cpu = nd_dcopy_sche_rr(dsk->receiver.nxt_dcopy_cpu);
-			if(next_cpu == -1) {
-				/* worker thread are all busy */
-				goto local_copy;
-			} else {
-				dsk->receiver.nxt_dcopy_cpu = next_cpu;
-			}
+			next_cpu = nd_dcopy_sche_rr(dsk->receiver.nxt_dcopy_cpu);//获得一个用于data_copy的CPU编号
+			if(next_cpu == -1) goto local_copy;/* worker thread are all busy */
+			//如果没有找到，进行local_copy；如果找到了，记录这次找到的CPU编号，并将in_remote_cpy置为true
+			else dsk->receiver.nxt_dcopy_cpu = next_cpu;
 			in_remote_cpy = true;
 			
 			// printk("dsk->receiver.nxt_dcopy_cpu:%d\n", dsk->receiver.nxt_dcopy_cpu);
-pin_user_page:
+pin_user_page://固定页框，确保数据所在的页面不会被换出
 			bv_arr = kmalloc(MAX_PIN_PAGES * sizeof(struct bio_vec), GFP_KERNEL);
-			blen = nd_dcopy_iov_init(msg, &biter, bv_arr, bsize, max_segs);
+			//分配bv_arr数组，用于存放bio_vec结构体，GFP_KERNEL表示普通内核分配，内存不足时可以阻塞等待
+			blen = nd_dcopy_iov_init(msg, &biter, bv_arr, bsize, max_segs);//返回初始化了的字节数
+			//msg是用户空间的消息头，biter是将要被生成的iov_iter结构体，bv_arr是bio_vec数组，bsize是需要拷贝的数据长度，max_segs是最大的bio_vec数组长度
+
 			nr_segs = biter.nr_segs;
 		} 
 
@@ -1861,7 +1878,7 @@ pin_user_page:
 		request = kzalloc(sizeof(struct nd_dcopy_request) ,GFP_KERNEL);
 		request->state = ND_DCOPY_RECV;
 		request->sk = sk;
-		request->clean_skb = (used + offset == skb->len);
+		request->clean_skb = (used + offset == skb->len);//？？？？
 		request->io_cpu = dsk->receiver.nxt_dcopy_cpu;
 		request->skb = skb;
 		request->offset = offset;
@@ -1871,7 +1888,7 @@ pin_user_page:
 		request->iter = biter;
 		// printk("queue_request:%d len:%d \n", dsk->receiver.nxt_dcopy_cpu, used);
 		/* update the biter */
-		iov_iter_advance(&biter, used);
+		iov_iter_advance(&biter, used);//？？？？
 		blen -= used;
 
 		if(blen == 0) {
@@ -1916,28 +1933,29 @@ queue_request:
 		// }
 		continue;
 local_copy:
-		if (!(flags & MSG_TRUNC)) {
-			err = skb_copy_datagram_msg(skb, offset, msg, used);
+		if (!(flags & MSG_TRUNC)) {//MSG_TRUNC表示用户只关心接收到的数据的长度，而不需要进行copy
+			err = skb_copy_datagram_msg(skb, offset, msg, used);//本地进行data copy
 			// printk("copy data done: %d\n", used);
-			if (err) {
+			if (err) {//错误处理
 				WARN_ON(true);
 				/* Exception. Bailout! */
-				if (!copied)
+				if (!copied)//如果没有成功复制任何数据（!copied），则将copied设置为-EFAULT，表示发生了错误，终止数据接收循环 (break)，退出数据处理
 					copied = -EFAULT;
 				break;
 			}
 		}
-		atomic_set(&dsk->receiver.copied_seq, atomic_read(&dsk->receiver.copied_seq) + used);
+		//更新相应的计数器
+		atomic_set(&dsk->receiver.copied_seq, atomic_read(&dsk->receiver.copied_seq) + used);//更新copied_seq
 		// WRITE_ONCE(*seq, *seq + used);
 		copied += used;
 		len -= used;
-		if (used + offset < skb->len)
-			continue;
-		__skb_unlink(skb, &sk->sk_receive_queue);
+		if (used + offset < skb->len) continue;
+		//当前skb中数据没有拷贝完，暂时不释放该skb的空间（可能由于最大拷贝长度len的限制导致末尾的没有拷贝完）
+		__skb_unlink(skb, &sk->sk_receive_queue);//将当前的skb从receive_queue的双向链表中移除
 		// atomic_sub(skb->truesize, &sk->sk_rmem_alloc);
-		kfree_skb(skb);
+		kfree_skb(skb);//释放skb占用的内存空间
 		/* might need to call clean pages here */
-	} while (len > 0);
+	} while (len > 0);//一直循环直到还需拷贝的数据长度len降低为0
 	
 	/* free the bvec memory */
 
@@ -1958,7 +1976,7 @@ local_copy:
 	return copied;
 
 out:
-	release_sock(sk);
+	release_sock(sk);//释放套接字锁并返回错误码
 	return err;
 }
 
