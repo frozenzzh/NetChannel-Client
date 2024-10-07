@@ -387,6 +387,8 @@ static int __init nd_load(void) {//模块初始化
         // nd_mattab_init(&nd_match_table, NULL);
 
         status = proto_register(&nd_prot, 1);
+        //proto_register() 是 Linux 内核中的一个函数，用于注册新的传输层协议。协议可以是 TCP、UDP，或者自定义协议。
+        //&nd_prot的结构体指针，定义了该协议的行为，这个结构体通常是 struct proto 类型的，包含了协议的各种操作函数和配置。
         if (status != 0) {
                 printk(KERN_ERR "proto_register failed in nd_init: %d\n",
                     status);

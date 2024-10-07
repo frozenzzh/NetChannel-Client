@@ -647,7 +647,7 @@ void test_udpclose()
 			strerror(errno));
 	}
 }
-
+//~/NetChannel/util/netdriver_test $server_ip:$port --sp $((6000+core)) --count 1 ndping
 int main(int argc, char** argv)
 {
 	int port, nextArg, tempArg, optval;
@@ -668,63 +668,52 @@ int main(int argc, char** argv)
 		print_help(argv[0]);
 		exit(0);
 	}
-	for (i = 0; i < 8000000; i++)
-		buffer[i] = (rand()) % 26 + 'a';
+	for (i = 0; i < 8000000; i++) buffer[i] = (rand()) % 26 + 'a';//随机生成buffer
 //	printf("buffer:%s\n", buffer);
 	if (argc < 3) {
 		printf("Usage: %s host:port [options] op op ...\n", argv[0]);
 		exit(1);
 	}
-	host = argv[1];
+	host = argv[1];//host=$server_ip:$port
 	port_name = strchr(argv[1], ':');
 	if (port_name == NULL) {
 		printf("Bad server spec %s: must be 'host:port'\n", argv[1]);
 		exit(1);
 	}
 	*port_name = 0;
-	port_name++;
-	port = get_int(port_name,
-			"Bad port number %s; must be positive integer\n");
-	for (nextArg = 2; (nextArg < argc) && (*argv[nextArg] == '-');
-			nextArg += 1) {
+	port_name++;//host=$server_ip port=$port
+	port = get_int(port_name, "Bad port number %s; must be positive integer\n");
+	for (nextArg = 2; (nextArg < argc) && (*argv[nextArg] == '-'); nextArg += 1) {
 		if (strcmp(argv[nextArg], "--help") == 0) {
 			print_help(argv[0]);
 			exit(0);
 		} else if (strcmp(argv[nextArg], "--count") == 0) {
 			if (nextArg == (argc-1)) {
-				printf("No value provided for %s option\n",
-					argv[nextArg]);
+				printf("No value provided for %s option\n",	argv[nextArg]);
 				exit(1);
 			}
 			nextArg++;
-			count = get_int(argv[nextArg],
-					"Bad count %s; must be positive integer\n");
+			count = get_int(argv[nextArg], "Bad count %s; must be positive integer\n");
 		} else if (strcmp(argv[nextArg], "--length") == 0) {
 			if (nextArg == (argc-1)) {
-				printf("No value provided for %s option\n",
-					argv[nextArg]);
+				printf("No value provided for %s option\n",	argv[nextArg]);
 				exit(1);
 			}
 			nextArg++;
-			length = get_int(argv[nextArg],
-				"Bad message length %s; must be positive "
-				"integer\n");
+			length = get_int(argv[nextArg],	"Bad message length %s; must be positive integer\n");
 			if (length > 1000000) {
 				length = 1000000;
 				printf("Reducing message length to %d\n", length);
 			}
 		} else if (strcmp(argv[nextArg], "--sp") == 0) {
 			if (nextArg == (argc-1)) {
-				printf("No value provided for %s option\n",
-					argv[nextArg]);
+				printf("No value provided for %s option\n", argv[nextArg]);
 				exit(1);
 			}
 			nextArg++;
-			srcPort = get_int(argv[nextArg],
-				"Bad srcPort %s; must be positive integer\n");
+			srcPort = get_int(argv[nextArg], "Bad srcPort %s; must be positive integer\n");
 		} else {
-			printf("Unknown option %s; type '%s --help' for help\n",
-				argv[nextArg], argv[0]);
+			printf("Unknown option %s; type '%s --help' for help\n", argv[nextArg], argv[0]);
 			exit(1);
 		}
 	}

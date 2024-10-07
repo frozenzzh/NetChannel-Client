@@ -575,8 +575,8 @@ static inline bool nd_stream_memory_free(const struct sock *sk, int pending)
 	return true;
 }
 /* copy from kcm sendmsg */
-static int nd_sender_local_dcopy(struct sock* sk, struct msghdr *msg, 
-	int req_len, u32 seq, long timeo) {
+static int nd_sender_local_dcopy(struct sock* sk, struct msghdr *msg, int req_len, u32 seq, long timeo) {
+	//负责将msghdr 消息结构中复制数据到内核的 sk_buff 中
 	struct sk_buff *skb = NULL;
 	struct nd_sock *nsk = nd_sk(sk);
 	struct nd_dcopy_response *resp;
@@ -584,24 +584,22 @@ static int nd_sender_local_dcopy(struct sock* sk, struct msghdr *msg,
 	int err, i = 0;
 	while (req_len > 0) {
 		bool merge = true;
-		struct page_frag *pfrag = sk_page_frag(sk);
-		if (!sk_page_frag_refill(sk, pfrag))
+		struct page_frag *pfrag = sk_page_frag(sk);//从sock关联的内存中分配一部分出来
+		if (!sk_page_frag_refill(sk, pfrag))//如果当前的页片段（page_frag）中的可用内存不足，sk_page_frag_refill 会尝试分配新的内存页，并更新page_frag结构的状态
 			goto wait_for_memory;
 		if(!skb) 
 			goto create_new_skb;
 		if(skb->len == ND_MAX_SKB_LEN)
 			goto push_skb;
 		i = skb_shinfo(skb)->nr_frags;
-		if (!skb_can_coalesce(skb, i, pfrag->page,
-			 pfrag->offset)) {
+		if (!skb_can_coalesce(skb, i, pfrag->page, pfrag->offset)) {
 			if (i == MAX_SKB_FRAGS) {
 				goto push_skb;
 			}
 			merge = false;
 		}
 		copy = min_t(int, ND_MAX_SKB_LEN - skb->len, req_len);
-		copy = min_t(int, copy,
-			     pfrag->size - pfrag->offset);
+		copy = min_t(int, copy, pfrag->size - pfrag->offset);
 		
 		err = nd_copy_to_page_nocache(sk, &msg->msg_iter, skb,
 					       pfrag->page,
@@ -613,8 +611,7 @@ static int nd_sender_local_dcopy(struct sock* sk, struct msghdr *msg,
 		if (merge) {
 			skb_frag_size_add(&skb_shinfo(skb)->frags[i - 1], copy);
 		} else {
-			skb_fill_page_desc(skb, i, pfrag->page,
-					   pfrag->offset, copy);
+			skb_fill_page_desc(skb, i, pfrag->page, pfrag->offset, copy);
 			get_page(pfrag->page);
 		}
 		pfrag->offset += copy;
@@ -693,10 +690,10 @@ static int nd_sendmsg_new2_locked(struct sock *sk, struct msghdr *msg, size_t le
 	struct nd_sock *nsk = nd_sk(sk);
 	// struct sk_buff *skb = NULL;
 	size_t copy, copied = 0;
-	long timeo = sock_sndtimeo(sk, msg->msg_flags & MSG_DONTWAIT);
+	long timeo = sock_sndtimeo(sk, msg->msg_flags & MSG_DONTWAIT);//获取超时时间
 	int eor = (sk->sk_socket->type == SOCK_DGRAM) ?
-		  !(msg->msg_flags & MSG_MORE) : !!(msg->msg_flags & MSG_EOR);
-	int err = -EPIPE;
+		  !(msg->msg_flags & MSG_MORE) : !!(msg->msg_flags & MSG_EOR);//根据不同的消息类型，判断是否是最后一个消息
+	int err = -EPIPE;// 表示"Broken pipe" 错误，表示向一端已经关闭的管道或套接字写数据
 	// int i = 0;
 	/* hardcode for now */
 	struct nd_dcopy_request *request;
@@ -709,23 +706,21 @@ static int nd_sendmsg_new2_locked(struct sock *sk, struct msghdr *msg, size_t le
 	int next_cpu = 0;
 	// int pending = 0;
 	WARN_ON(msg->msg_iter.count != len);
-	if ((1 << sk->sk_state) & ~(NDF_ESTABLISH)) {
+	if ((1 << sk->sk_state) & ~(NDF_ESTABLISH)) {//检查是否建立连接
 		err = nd_wait_for_connect(sk, &timeo);
-		if (err != 0)
-			goto out_error;
+		if (err != 0) goto out_error;
 	}
 	/* Per tcp_sendmsg this should be in poll */
-	sk_clear_bit(SOCKWQ_ASYNC_NOSPACE, sk);
+	sk_clear_bit(SOCKWQ_ASYNC_NOSPACE, sk);//清除套接字写队列已满标志位
 
-	if (sk->sk_err)
-		goto out_error;
+	if (sk->sk_err)	goto out_error;
 
 	/* intialize the nxt_dcopy_cpu */
 	nsk->sender.nxt_dcopy_cpu = nd_params.data_cpy_core;
 
 	while (msg_data_left(msg)) {
 
-		if (!nd_stream_memory_free(sk, nsk->sender.pending_queue)) {
+		if (!nd_stream_memory_free(sk, nsk->sender.pending_queue)) {//检查是否有足够内存空间发送
 			// set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 			goto wait_for_memory;
 		}
@@ -733,6 +728,7 @@ static int nd_sendmsg_new2_locked(struct sock *sk, struct msghdr *msg, size_t le
 		/* this part might need to change latter */
 		/* decide to do local or remote data copy */
 		copy = min_t(int, max_segs * PAGE_SIZE / ND_MAX_SKB_LEN * ND_MAX_SKB_LEN, msg_data_left(msg));
+		//为什么要除了ND_MAX_SKB_LEN又乘上去？？？
 		if(copy == 0) {
 			WARN_ON(true);
 		}
@@ -745,6 +741,9 @@ static int nd_sendmsg_new2_locked(struct sock *sk, struct msghdr *msg, size_t le
 		if(atomic_read(&nsk->sender.in_flight_copy_bytes) > nd_params.ldcopy_tx_inflight_thre || 
 			copied <  nd_params.ldcopy_min_thre || nd_params.nd_num_dc_thread == 0) {
 			goto local_sender_copy;
+			//仍然为三个条件：正在传输的数据字节数是否超过了限制
+			//本地copy的字节数是否还小于阈值
+			//是否支持remote_data_copy
 		}
 		next_cpu = nd_dcopy_sche_rr(nsk->sender.nxt_dcopy_cpu);
 		if(next_cpu == -1) {
