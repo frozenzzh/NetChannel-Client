@@ -84,7 +84,8 @@ EXPORT_SYMBOL(nd_hashinfo);
 #define PORTS_PER_CHAIN (MAX_ND_PORTS / ND_HTABLE_SIZE_MIN)
 
 #define MAX_PIN_PAGES 48
-
+static bool local_copy_report=false;
+static bool inflight_report=false;
 static inline bool page_is_mergeable(const struct bio_vec *bv,
 		struct page *page, unsigned int len, unsigned int off,
 		bool *same_page)//?????
@@ -740,6 +741,11 @@ static int nd_sendmsg_new2_locked(struct sock *sk, struct msghdr *msg, size_t le
 		// } 
 		if(atomic_read(&nsk->sender.in_flight_copy_bytes) > nd_params.ldcopy_tx_inflight_thre || 
 			copied <  nd_params.ldcopy_min_thre || nd_params.nd_num_dc_thread == 0) {
+			if (inflight_report==false) {
+				pr_info("NetChannel: sender.in_flight_copy_bytes=%d, ldcopy_tx_inflight_thre=%d, ldcopy_min_thre=%d", 
+				atomic_read(&nsk->sender.in_flight_copy_bytes), nd_params.ldcopy_tx_inflight_thre, nd_params.ldcopy_min_thre);
+				inflight_report = true;
+			}
 			goto local_sender_copy;
 			//仍然为三个条件：正在传输的数据字节数是否超过了限制
 			//本地copy的字节数是否还小于阈值
@@ -796,6 +802,10 @@ local_sender_copy:
 
 		// }
 // local_sender_copy_skip_schedule:
+		if (local_copy_report==false) {
+			pr_info("NetChannel: Error, should not use local copy in send!\n");
+			local_copy_report = true;
+		}
 		err = nd_sender_local_dcopy(sk, msg, copy, nsk->sender.write_seq, timeo);
 		if(err != 0)
 			goto out_error;
