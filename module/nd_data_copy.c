@@ -67,10 +67,10 @@ nd_dcopy_fetch_request(struct nd_dcopy_queue *queue)//返回一个copy_list中�
 	list_del(&req->entry);//将被取出来的entry从链表中删除？？？但是是从哪一个链表中删除？？？
 	return req;
 }
-
+static int forbidden_copy_core=8;
 /* round-robin */
 int nd_dcopy_sche_rr(int last_qid) {
-	//last_qid表示上一个处理请求的CPU的编号，用于作为轮询的起点
+	//last_qid表示上一个处理请求的CPU的编号，用于作为轮询的起点，有时候会暴力跳过用于处理irq的指定CPU，所以可能实际用于copy的可能会少一点
 	struct nd_dcopy_queue *queue;
 	int last_q =  (last_qid - nd_params.data_cpy_core) / nd_params.nr_nodes;
 	int i = 0, qid;
@@ -82,6 +82,8 @@ int nd_dcopy_sche_rr(int last_qid) {
 		queue =  &nd_dcopy_q[qid * nd_params.nr_nodes + nd_params.data_cpy_core];
 		if(qid * nd_params.nr_nodes + nd_params.data_cpy_core == raw_smp_processor_id())//跳过当前的CPU
 			continue;
+		if (qid * nd_params.nr_nodes + nd_params.data_cpy_core == forbidden_copy_core)	
+			continue;//跳过指定的CPU
 		if(atomic_read(&queue->queue_size) >= queue->queue_threshold)//跳过队列中的请求已经超过了阈值的CPU
 			continue;
 		find = true;
@@ -94,6 +96,7 @@ int nd_dcopy_sche_rr(int last_qid) {
 		// qid = (1 + last_q) % (nd_params.nd_num_dc_thread);
 		// last_q = qid;
 	}
+	if (last_q * nd_params.nr_nodes + nd_params.data_cpy_core==forbidden_copy_core) return nd_dcopy_sche_rr(forbidden_copy_core);//
 	return last_q * nd_params.nr_nodes + nd_params.data_cpy_core;//返回最终的CPU编号
 	// }
 	// return -1;
