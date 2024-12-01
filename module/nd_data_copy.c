@@ -1,9 +1,10 @@
 #include "nd_data_copy.h"
 #include "nd_impl.h"
+#include "nd_data_copy_sche.h"
 
 static struct workqueue_struct *nd_dcopy_wq;
 
-static struct nd_dcopy_queue nd_dcopy_q[NR_CPUS];
+struct nd_dcopy_queue nd_dcopy_q[NR_CPUS];
 //NR_CPUS为linux系统中能够支持的CPU数量的最大值，此处为8192
 
 static inline void nd_dcopy_free_request(struct nd_dcopy_request *req) {
@@ -70,6 +71,7 @@ nd_dcopy_fetch_request(struct nd_dcopy_queue *queue)//返回一个copy_list中�
 static int forbidden_copy_core=8;
 /* round-robin */
 int nd_dcopy_sche_rr(int last_qid) {
+	/*原始实现
 	//last_qid表示上一个处理请求的CPU的编号，用于作为轮询的起点，有时候会暴力跳过用于处理irq的指定CPU，所以可能实际用于copy的可能会少一点
 	struct nd_dcopy_queue *queue;
 	int last_q =  (last_qid - nd_params.data_cpy_core) / nd_params.nr_nodes;
@@ -77,29 +79,19 @@ int nd_dcopy_sche_rr(int last_qid) {
 	bool find = false;
 	
  	for (i = 1; i <= nd_params.nd_num_dc_thread; i++) {//遍历所有的data_copy_thread？？？？
-
 		qid = (i + last_q) % (nd_params.nd_num_dc_thread);//取模保证仍然落在范围内
 		queue =  &nd_dcopy_q[qid * nd_params.nr_nodes + nd_params.data_cpy_core];
-		if(qid * nd_params.nr_nodes + nd_params.data_cpy_core == raw_smp_processor_id())//跳过当前的CPU
-			continue;
-		if (qid * nd_params.nr_nodes + nd_params.data_cpy_core == forbidden_copy_core)	
-			continue;//跳过指定的CPU
-		if(atomic_read(&queue->queue_size) >= queue->queue_threshold)//跳过队列中的请求已经超过了阈值的CPU
-			continue;
+		if(qid * nd_params.nr_nodes + nd_params.data_cpy_core == raw_smp_processor_id()) continue;//跳过当前的CPU
+		if (qid * nd_params.nr_nodes + nd_params.data_cpy_core == forbidden_copy_core) continue;//跳过指定的CPU
+		if(atomic_read(&queue->queue_size) >= queue->queue_threshold) continue;//跳过队列中的请求已经超过了阈值的CPU
 		find = true;
 		last_q = qid;
 		break;
-		// return qid * 4 + nd_params.data_cpy_core;
 	}
-	if(!find) {
-		return -1;
-		// qid = (1 + last_q) % (nd_params.nd_num_dc_thread);
-		// last_q = qid;
-	}
+	if(!find) return -1;
 	if (last_q * nd_params.nr_nodes + nd_params.data_cpy_core==forbidden_copy_core) return nd_dcopy_sche_rr(forbidden_copy_core);//
-	return last_q * nd_params.nr_nodes + nd_params.data_cpy_core;//返回最终的CPU编号
-	// }
-	// return -1;
+	return last_q * nd_params.nr_nodes + nd_params.data_cpy_core;//返回最终的CPU编号*/
+	return decide_update_choose_strategy(last_qid);
 }
 
 /* compact */

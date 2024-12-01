@@ -59,6 +59,7 @@
 #include <linux/cpufreq.h>
 #include <linux/cpumask.h> // cpumask_{first,next}(), cpu_online_mask
 #include <linux/delay.h>
+#include <linux/sched.h>
 // #include "linux_nd.h"
 // #include "net_nd.h"
 // #include "net_ndlite.h"
@@ -67,6 +68,12 @@
 // EXPORT_SYMBOL(nd_table);
 #include "nd_host.h"
 #include "nd_data_copy.h"
+#include "nd_data_copy_sche.h"
+
+extern int pre_pid;
+extern int send_call_times;
+extern bool is_1update;
+extern bool is_2update;
 
 long sysctl_nd_mem[3] __read_mostly;
 EXPORT_SYMBOL(sysctl_nd_mem);
@@ -1168,6 +1175,13 @@ int nd_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 {
 	int ret = 0;
 	lock_sock(sk);
+	int curr_pid=current->pid;//获得当前进程的pid
+	if (curr_pid != pre_pid) {
+		pre_pid = curr_pid;
+		send_call_times=1;
+		is_1update=false;
+		is_2update=false;
+	} else if ((send_call_times==1)||(send_call_times==2)) send_call_times++;
 	// nd_rps_record_flow(sk);
 	ret = nd_sendmsg_new2_locked(sk, msg, len);
 	release_sock(sk);

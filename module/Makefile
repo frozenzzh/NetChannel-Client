@@ -10,7 +10,8 @@ nd_module-y = 	 nd_host.o\
 				 nd_data_copy.o\
 				 nd.o \
 				 nd_target.o\
-				 nd_plumbing.o
+				 nd_plumbing.o\
+				 nd_data_copy_sche.o
 
 # nd.o \
 #             ndlite.o \
