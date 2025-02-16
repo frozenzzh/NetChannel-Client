@@ -295,6 +295,7 @@ void nd_params_init(struct nd_params* params) {
     params->num_lat_channels = 4;
     /* start index of thpt channel index */
     params->thpt_channel_idx = 4;
+    //这里是否也会存在没有配置好NUMA节点的问题？？？目前看上去以4开头，那么默认会选择4*nr_node，在nr_node=2时候会选择8号做irq处理？？？
     params->num_thpt_channels = 4;
     params->alpha = 2;
     params->beta = 5;

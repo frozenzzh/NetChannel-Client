@@ -63,7 +63,7 @@
 #include "nd_impl.h"
 
 
-int nd_init_request(struct sock* sk, struct nd_conn_request *req)
+int nd_init_request(struct sock* sk, struct nd_conn_request *req)//初始化request，分配报文头部空间并且设置优先级
 {
 	// struct nd_conn_queue *queue = NULL;
 	// if(queue_id == -1) {
@@ -79,24 +79,24 @@ int nd_init_request(struct sock* sk, struct nd_conn_request *req)
 		return -ENOMEM;
 	}
 	/* set up the req priority */
-	req->prio_class = sk->sk_priority == 0? 0 : 1;
+	req->prio_class = sk->sk_priority == 0? 0 : 1;//这里的sock应该是来源于构造时给定的优先级
 
 	// req->queue = queue;
 	return 0;
 }
 
-struct sk_buff* __construct_control_skb(struct sock* sk, int size) {
+struct sk_buff* __construct_control_skb(struct sock* sk, int size) {//定义一个控制sk_buffer
 
 	struct sk_buff *skb;
 	if(!size)
-		size = ND_HEADER_MAX_SIZE;
+		size = ND_HEADER_MAX_SIZE;//没有指定size默认使用ND_HEADER_MAX_SIZE
 	skb = alloc_skb(size, GFP_ATOMIC);
 	skb->sk = sk;
 	// int extra_bytes;
 	if (unlikely(!skb))
 		return NULL;
-	skb_reserve(skb, ND_HEADER_MAX_SIZE);
-	skb_reset_transport_header(skb);
+	skb_reserve(skb, ND_HEADER_MAX_SIZE);//为协议头部预留空间
+	skb_reset_transport_header(skb);//重置传输层头指针
 
 	// h = (struct nd_hdr *) skb_put(skb, length);
 	// memcpy(h, contents, length);
@@ -112,7 +112,7 @@ struct sk_buff* __construct_control_skb(struct sock* sk, int size) {
 
 struct nd_conn_request* construct_sync_req(struct sock* sk) {
 	// int extra_bytes = 0;
-	struct inet_sock *inet = inet_sk(sk);
+	struct inet_sock *inet = inet_sk(sk);//获得网络层相关信息
 	struct nd_conn_request* req = kzalloc(sizeof(*req), GFP_KERNEL);
 	struct ndhdr* sync;
 	if(unlikely(!req)) {
@@ -120,10 +120,10 @@ struct nd_conn_request* construct_sync_req(struct sock* sk) {
 		return NULL;
 	}
 	nd_init_request(sk, req);
-	req->state = ND_CONN_SEND_CMD_PDU;
+	req->state = ND_CONN_SEND_CMD_PDU;//表示正在发送控制类型的信息
 	sync = req->hdr;
 	// req->pdu_len = sizeof(struct ndhdr);
-	req->offset = 0;
+	req->offset = 0;//表示数据就从开头开始？？？
 	req->data_sent = 0;
 	// struct sk_buff* skb = __construct_control_skb(sk, 0);
 	// struct nd_flow_sync_hdr* fh;
@@ -132,12 +132,12 @@ struct nd_conn_request* construct_sync_req(struct sock* sk) {
 	// fh = (struct nd_flow_sync_hdr *) skb_put(skb, sizeof(struct nd_flow_sync_hdr));
 	
 	// dh = (struct ndhdr*) (&sync->common);
-	sync->len = 0;
+	sync->len = 0;//填充源端口和目的端口，并设置相关类型信息
 	sync->type = SYNC;
 	sync->source = inet->inet_sport;
 	sync->dest = inet->inet_dport;
 	// sync->check = 0;
-	sync->doff = (sizeof(struct ndhdr)) << 2;
+	sync->doff = (sizeof(struct ndhdr)) << 2;//数据偏移，单位是4字节？？？
 
 	// fh->flow_id = message_id;
 	// fh->flow_size = htonl(message_size);
@@ -148,7 +148,7 @@ struct nd_conn_request* construct_sync_req(struct sock* sk) {
 	return req;
 }
 
-struct nd_conn_request* construct_sync_ack_req(struct sock* sk) {
+struct nd_conn_request* construct_sync_ack_req(struct sock* sk) {//构造一个同步确认的请求发送出去
 	// int extra_bytes = 0;
 	struct inet_sock *inet = inet_sk(sk);
 	struct nd_conn_request* req = kzalloc(sizeof(*req), GFP_KERNEL);
@@ -169,7 +169,7 @@ struct nd_conn_request* construct_sync_ack_req(struct sock* sk) {
 	
 	// dh = (struct ndhdr*) (&sync->common);
 	sync->len = 0;
-	sync->type = SYNC_ACK;
+	sync->type = SYNC_ACK;//只是类型和之前有区别
 	sync->source = inet->inet_sport;
 	sync->dest = inet->inet_dport;
 
@@ -214,7 +214,7 @@ struct nd_conn_request* construct_ack_req(struct sock* sk, gfp_t flag) {
 	ack->dest = inet->inet_dport;
 	// sync->check = 0;
 	ack->doff = (sizeof(struct ndhdr)) << 2;
-	ack->grant_seq = htonl(nsk->receiver.grant_nxt);
+	ack->grant_seq = htonl(nsk->receiver.grant_nxt);//设置接收端允许的下一个序列号
 	if(nd_params.nd_debug)
 		pr_info("ack grant seq:%u\n", htonl(ack->grant_seq));
 	// pr_info("ack grant seq:%u\n", htonl(ack->grant_seq));
@@ -330,13 +330,13 @@ struct nd_conn_request* construct_fin_req(struct sock* sk) {
 
 struct sk_buff* construct_ack_pkt(struct sock* sk, __be32 rcv_nxt) {
 	// int extra_bytes = 0;
-	struct sk_buff* skb = __construct_control_skb(sk, 0);
+	struct sk_buff* skb = __construct_control_skb(sk, 0);//创建skb并且在头部预留空间
 	struct nd_ack_hdr* ah;
 	struct ndhdr* dh; 
 	if(unlikely(!skb)) {
 		return NULL;
 	}
-	ah = (struct nd_ack_hdr *) skb_put(skb, sizeof(struct nd_ack_hdr));
+	ah = (struct nd_ack_hdr *) skb_put(skb, sizeof(struct nd_ack_hdr));//在数据区的尾部进行添加？？？
 	dh = (struct ndhdr*) (&ah->common);
 	dh->len = htons(sizeof(struct nd_ack_hdr));
 	dh->type = ACK;
@@ -476,7 +476,7 @@ struct sk_buff* construct_accept_pkt(struct sock* sk, unsigned short iter, int e
  * Return:     Either zero (for success), or a negative errno value if there
  *             was a problem.
  */
-int nd_xmit_control(struct sk_buff* skb, struct sock *sk, int dport)
+int nd_xmit_control(struct sk_buff* skb, struct sock *sk, int dport)//构造并发送控制类型数据包
 {
 	// struct nd_hdr *h;
 	int result;
@@ -495,10 +495,11 @@ int nd_xmit_control(struct sk_buff* skb, struct sock *sk, int dport)
 	// inet->tos = IPTOS_LOWDELAY | IPTOS_PREC_NETCONTROL;
 	skb->sk = sk;
 	// dst_confirm_neigh(peer->dst, &fl4->daddr);
-	dst_hold(__sk_dst_get(sk));
+	dst_hold(__sk_dst_get(sk));//获取路由信息，并且保证不会被释放？？？
 	// skb_dst_set(skb, __sk_dst_get(sk));
 	// skb_get(skb);
 	result = __ip_queue_xmit(sk, skb, &inet->cork.fl, IPTOS_LOWDELAY | IPTOS_PREC_NETCONTROL);
+	//通过IP层发送数据包？？？
 	if (unlikely(result != 0)) {
 		// INC_METRIC(control_xmit_errors, 1);
 		

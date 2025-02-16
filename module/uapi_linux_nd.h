@@ -74,14 +74,14 @@ enum nd_packet_type {
 // };
 
 struct ndhdr {
-	__be16	source;
+	__be16	source;//源端口号和目的端口号
 	__be16	dest;
 	/**
 	 * @unused1: corresponds to the sequence number field in TCP headers;
 	 * must not be used by ND, in case it gets incremented during TCP
 	 * offload.
 	 */
-	__be32 seq;
+	__be32 seq;//同TCP的序列号
 	
 	/* the max seq num the sender is allowed to send */
 	__be32 grant_seq;
@@ -103,7 +103,7 @@ struct ndhdr {
 	//  */
 	// __u16 gro_count;
 	
-	__be16 len;
+	__be16 len;//数据报文的长度
 	// *
 	//  * @priority: the priority at which the packet was set; used
 	//  * only for debugging.

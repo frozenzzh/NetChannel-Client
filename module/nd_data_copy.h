@@ -87,7 +87,7 @@ static inline int nd_copy_to_page_nocache(struct sock *sk, struct iov_iter *from
 					   struct sk_buff *skb,
 					   struct page *page,
 					   int off, int copy)
-{
+{//将用户空间的数据从 iov_iter 结构中复制到指定的内核页片段（page）
 	int err;
 
 	err = skb_do_copy_data_nocache(sk, skb, from, page_address(page) + off,

@@ -208,7 +208,7 @@ void nd_release_pages(struct bio_vec* bv_arr, bool mark_dirty, int max_segs)
 	nd_for_each_segment_all(bvec, bv_arr, iter_all, max_segs) {
 		if (mark_dirty && !PageCompound(bvec->bv_page))
 			set_page_dirty_lock(bvec->bv_page);
-		put_page(bvec->bv_page);
+		put_page(bvec->bv_page);//释放锁定的页面
 	}
 }
 
@@ -260,16 +260,16 @@ void nd_fetch_dcopy_response(struct sock *sk) {
 	struct nd_sock *nsk = nd_sk(sk);
 	struct nd_dcopy_response *resp;
 	struct llist_node *node;
-	for (node = llist_del_all(&nsk->sender.response_list); node;) {
+	for (node = llist_del_all(&nsk->sender.response_list); node;) {//遍历并且清空response_list
 		resp = llist_entry(node, struct nd_dcopy_response, lentry);
 		/* reuse tcp_rtx_queue due to the mess-up order */
-		nd_rbtree_insert(&sk->tcp_rtx_queue, resp->skb);
+		nd_rbtree_insert(&sk->tcp_rtx_queue, resp->skb);//将其插入到tcp_rtx_queue中，其中tcp_rtx_queue是一个红黑树
 		node = node->next;
-		sk_wmem_queued_add(sk, resp->skb->truesize);
+		sk_wmem_queued_add(sk, resp->skb->truesize);//马上将进入实际的发送环节，所以更新套接字已用内存计数
 		// sk_mem_charge(sk, resp->skb->len);
 		// printk("sk->sk_forward alloc:%d\n", sk->sk_forward_alloc);
 
-		nsk->sender.pending_queue -= resp->skb->len;
+		nsk->sender.pending_queue -= resp->skb->len;//pending_queue表示正在进行远程data_copy的字节数量，此处减去resp->skb->len表示已经完成了一个resp->skb->len的数据copy
 		WARN_ON(nsk->sender.pending_queue < 0);
 		kfree(resp);
 		if(nd_params.nd_debug) {
@@ -305,7 +305,7 @@ static int sk_wait_sender_data_copy(struct sock *sk, long *timeo)
 	int rc= 0;
 	struct nd_sock* nsk = nd_sk(sk);
 	while(atomic_read(&nsk->sender.in_flight_copy_bytes) != 0) {
-		nd_push(sk, GFP_KERNEL);
+		nd_push(sk, GFP_KERNEL);//在轮询等待的时候不断读取之后的逻辑，也即将数据包继续放入网络层中进行处理
 		// nd_fetch_dcopy_response(sk);
 		schedule();
 		// nd_try_send_ack(sk, 1);
@@ -318,9 +318,9 @@ static int sk_wait_sender_data_copy(struct sock *sk, long *timeo)
 	return rc;
 }
 
-void nd_rbtree_insert(struct rb_root *root, struct sk_buff *skb)
+void nd_rbtree_insert(struct rb_root *root, struct sk_buff *skb)//依据序列号进行红黑树的插入
 {
-        struct rb_node **p = &root->rb_node;
+        struct rb_node **p = &root->rb_node;//p为指向一棵由指针构成的红黑树的指针
         struct rb_node *parent = NULL;
         struct sk_buff *skb1;
 
@@ -332,8 +332,8 @@ void nd_rbtree_insert(struct rb_root *root, struct sk_buff *skb)
                 else
                         p = &parent->rb_right;
         }
-        rb_link_node(&skb->rbnode, parent, p);
-        rb_insert_color(&skb->rbnode, root);
+        rb_link_node(&skb->rbnode, parent, p);//插入到红黑树中
+        rb_insert_color(&skb->rbnode, root);//进行平衡
 }
 
 static void nd_rtx_queue_purge(struct sock *sk)
@@ -402,22 +402,28 @@ int nd_err(struct sk_buff *skb, u32 info)
 	// return __nd4_lib_err(skb, info, &nd_table);
 }
 
-struct sk_buff* nd_dequeue_snd_q(struct sock *sk) {
+struct sk_buff* nd_dequeue_snd_q(struct sock *sk) {//取出一个数据包进行处理
 	struct sk_buff *skb = NULL;
 	struct nd_sock *nsk = nd_sk(sk);
 	/* only one queue can be non-empty */
 	WARN_ON(skb_peek(&sk->sk_write_queue) && rb_first(&sk->tcp_rtx_queue));
+	//wriet_queue:发送队列，处理尚未发送的数据包
+	//tcp_tx_queue：重传队列，处理已经发出，但是还没有收到ACK的包，当一个skb收到ACK之后会从重传队列中移除
+	//为什么以上两个不能都有内容？？？？
 	if(skb_peek(&sk->sk_write_queue)) {
 		skb = skb_peek(&sk->sk_write_queue);
-		ND_SKB_CB(skb)->seq = nsk->sender.write_seq;
-		nsk->sender.write_seq += skb->len;
+		ND_SKB_CB(skb)->seq = nsk->sender.write_seq;//更新序列号设置为当前的写序列号
+		nsk->sender.write_seq += skb->len;//更新写序列号
+		//实际上写序列号即为下一个要发送的包的序列号
 		skb_dequeue(&sk->sk_write_queue);
 
 	} else if(rb_first(&sk->tcp_rtx_queue)){
 		struct rb_node *p = rb_first(&sk->tcp_rtx_queue);
 		skb = rb_to_skb(p);
 		if(nsk->sender.snd_una == ND_SKB_CB(skb)->seq) {
-			nsk->sender.snd_una += skb->len;
+			//snd_una表示第一个未确认的包，这里是只要发出去就能保证确认了？？？？
+			//un-ack的数据包恰好为当前的数据包序列号
+			nsk->sender.snd_una += skb->len;//更新未确认序列号？？？？
 			nd_rtx_queue_unlink(skb, sk);
 		} else
 			skb = NULL;
@@ -425,23 +431,23 @@ struct sk_buff* nd_dequeue_snd_q(struct sock *sk) {
 	return skb;
 }
 
-bool nd_snd_q_ready(struct sock *sk) {
+bool nd_snd_q_ready(struct sock *sk) {//检测是否有数据需要发送，数据可能存在于发送队列（存储尚未发送的数据包sk_write_queue链表）和重传队列(存储乱序需要重传的数据包tcp_rtx_queue)中
 	struct sk_buff *skb;
 
-	if(skb_peek(&sk->sk_write_queue)) {
+	if(skb_peek(&sk->sk_write_queue)) {//发送队列是否存在
 		return true;
 	}
 	if(rb_first(&sk->tcp_rtx_queue)) {
 		struct rb_node *p = rb_first(&sk->tcp_rtx_queue);
 		skb = rb_to_skb(p);
-		if(ND_SKB_CB(skb)->seq == nd_sk(sk)->sender.snd_nxt)
+		if(ND_SKB_CB(skb)->seq == nd_sk(sk)->sender.snd_nxt)//重传队列中头部的数据包恰好是下一个要重传的数据包
 			return true;
 
 	}
 	return false;
 }
 
-int nd_push(struct sock *sk, gfp_t flag) {
+int nd_push(struct sock *sk, gfp_t flag) {//将skb构造未nd_conn_request经过底层的发送队列发送掉
 	struct inet_sock *inet = inet_sk(sk);
 	struct sk_buff *skb;
 	struct nd_sock *nsk = nd_sk(sk);
@@ -451,10 +457,10 @@ int nd_push(struct sock *sk, gfp_t flag) {
 	int ret = 0;
 	u32 seq;
 	
-	nd_fetch_dcopy_response(sk);
+	nd_fetch_dcopy_response(sk);//将之前data_copy完成的表示data_copy_response list push到红黑树sk->tcp_rtx_queue中
 	while(nd_snd_q_ready(sk) || nsk->sender.pending_req) {
 
-		if(nsk->sender.pending_req) {
+		if(nsk->sender.pending_req) {//有之前未处理的挂起conn_request，直接进入queue_req
 			WARN_ON(nsk->sender.pending_req == NULL);
 			req = nsk->sender.pending_req;
 			nsk->sender.pending_req = NULL;
@@ -476,7 +482,7 @@ int nd_push(struct sock *sk, gfp_t flag) {
 		if(skb->len == 0 || skb->data_len == 0) {
 			WARN_ON(true);
 		}
-		nd_init_request(sk, req);
+		nd_init_request(sk, req);//分配conn_request以及req->hdr的内存空间，并初始化conn_request的优先级信息
 		req->state = ND_CONN_SEND_CMD_PDU;
 		// req->pdu_len = sizeof(struct ndhdr) + skb->len;
 		// req->data_len = skb->len;
@@ -495,19 +501,19 @@ int nd_push(struct sock *sk, gfp_t flag) {
 
 		req->skb = skb;
 
-		hdr->len = htons(skb->len);
-		hdr->type = DATA;
-		hdr->source = inet->inet_sport;
+		hdr->len = htons(skb->len);//头部实现了一个简单的TCP的功能，len表示skb的长度
+		hdr->type = DATA;//类型未DATA
+		hdr->source = inet->inet_sport;//地址表示源端口号和目的端口号
 		hdr->dest = inet->inet_dport;
 		// hdr->check = 0;
-		hdr->doff = (sizeof(struct ndhdr)) << 2;
+		hdr->doff = (sizeof(struct ndhdr)) << 2;//高4位表示数据的偏移量，为了和TCP头部保持一致这样设置
 		hdr->seq = htonl(ND_SKB_CB(skb)->seq);
 		// skb_dequeue(&sk->sk_write_queue);
 			// kfree_skb(skb);
-		sk_wmem_queued_add(sk, -skb->truesize);
+		sk_wmem_queued_add(sk, -skb->truesize);//truesize表示总长度，包含头部和有效负载，减少发送缓冲区计时器用于流量控制
 		// sk_mem_uncharge(sk, skb->truesize);
 		WARN_ON(nsk->sender.snd_nxt != ND_SKB_CB(skb)->seq);
-		nsk->sender.snd_nxt += skb->len;
+		nsk->sender.snd_nxt += skb->len;//更新发送端要发送的下一个序列号
 		// if(ND_SKB_CB(skb)->seq == 0)
 		// 	skb_dump(KERN_WARNING, skb, true);
 
@@ -530,24 +536,24 @@ queue_req:
 		// 	ret = -EMSGSIZE;
 		// 	break;
 		// }
-		seq = ND_SKB_CB(skb)->seq + skb->len;
+		seq = ND_SKB_CB(skb)->seq + skb->len;//更新seq
 		/* queue the request */
 		// req->queue = &nd_ctrl->queues[htons(inet->inet_sport) % nd_params.nd_num_queue];
 		push_success = nd_conn_queue_request(req, nsk, false, false, !nd_snd_q_ready(sk));
 		if(!push_success) {
 			WARN_ON(nsk->sender.pending_req);
 			// pr_info("add to sleep sock:%d\n", __LINE__);
-			nsk->sender.pending_req = req;
+			nsk->sender.pending_req = req;//发送失败，将请求挂起等待下次再发
 			ret = -EDQUOT;
 			break;
 		}
-		nsk->sender.snd_nxt = seq;
+		nsk->sender.snd_nxt = seq;//更行下一次发送的报文的seq
 		// printk(" dequeue forward alloc:%d\n", sk->sk_forward_alloc);
 	}
 	return ret;
 }
 
-void nd_tx_work(struct work_struct *w)
+void nd_tx_work(struct work_struct *w)//？？？和之前的调度的关系是什么呢？？？
 {
 	struct nd_sock *nsk = container_of(w, struct nd_sock, tx_work);
 	struct sock *sk = (struct sock*)nsk;
@@ -574,10 +580,11 @@ out:
 	release_sock(sk);
 }
 
-static inline bool nd_stream_memory_free(const struct sock *sk, int pending)
+static inline bool nd_stream_memory_free(const struct sock *sk, int pending)//检测是否有足够的缓冲区用于发送数据
 {
 	/* this is roung calc, since pending queue only consider payload */
 	if (READ_ONCE(sk->sk_wmem_queued) + pending >= READ_ONCE(sk->sk_sndbuf))
+	//sk->sk_wmem_queued当前套接字已经分配的发送缓冲区大小，pending等待发送的数据大小，sk->sk_sndbuf套接字发送缓冲区上限
 		return false;
 
 	return true;
@@ -597,10 +604,10 @@ static int nd_sender_local_dcopy(struct sock* sk, struct msghdr *msg, int req_le
 			goto wait_for_memory;
 		if(!skb) 
 			goto create_new_skb;
-		if(skb->len == ND_MAX_SKB_LEN)
+		if(skb->len == ND_MAX_SKB_LEN)//有效负载总长度达到上限，进行push操作，同时将当前的skb置为NULL
 			goto push_skb;
 		i = skb_shinfo(skb)->nr_frags;
-		if (!skb_can_coalesce(skb, i, pfrag->page, pfrag->offset)) {
+		if (!skb_can_coalesce(skb, i, pfrag->page, pfrag->offset)) {//查看当前的碎片能否和skb的shinfo中的内存页末尾进行合并
 			if (i == MAX_SKB_FRAGS) {
 				goto push_skb;
 			}
@@ -632,7 +639,7 @@ static int nd_sender_local_dcopy(struct sock* sk, struct msghdr *msg, int req_le
 create_new_skb:
 		WARN_ON(skb != NULL);
 		skb = alloc_skb(0, sk->sk_allocation);
-		skb->ip_summed = CHECKSUM_PARTIAL;
+		skb->ip_summed = CHECKSUM_PARTIAL;//数据包的校验和已经由硬件或其他层计算完成
 		// printk("create new skb\n");
 		if(!skb)
 			goto wait_for_memory;
@@ -641,11 +648,13 @@ create_new_skb:
 push_skb:
 		/* push the new skb */
 		ND_SKB_CB(skb)->seq = seq;
-		resp = kmalloc(sizeof(struct nd_dcopy_response), GFP_KERNEL);
+		resp = kmalloc(sizeof(struct nd_dcopy_response), GFP_KERNEL);//分配一个相应结构体
 		resp->skb = skb;
+		//也就是说，实际发送的数据存储在skb的shinfo_list中，而skb被放在了nd_dcopy_response中，
+		//nd_dcopy_response被组织成了一个sender.response_list中
 		llist_add(&resp->lentry, &nsk->sender.response_list);
 		seq += skb->len;
-		nsk->sender.pending_queue += skb->len;
+		nsk->sender.pending_queue += skb->len;//表示等待队列的长度吗？？？
 		// if(skb && ntohs(inet->inet_dport) == 4000)
 		// printk("data copy: %d \n", (ND_SKB_CB(skb)->seq));
 		skb = NULL;
@@ -655,15 +664,15 @@ wait_for_memory:
 		/* wait for pending requests to be done */
 		sk_wait_sender_data_copy(sk, &timeo);
 		// nd_fetch_dcopy_response(sk);
-		err = nd_push(sk, GFP_KERNEL);
-		WARN_ON(nsk->sender.pending_queue != 0);
+		err = nd_push(sk, GFP_KERNEL);//当前的data_copy完成之后继续将内容下方到网络层中进行处理
+		WARN_ON(nsk->sender.pending_queue != 0);//此处表示等待处理的数据量pending_queue应当为空
 		// set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 		/* hard code nd_ctrl for now */
-		if(err == -EDQUOT){
+		if(err == -EDQUOT){//资源耗尽，将当前套接字添加到对应的等待队列中
 			// pr_info("add to sleep sock send msg\n");
 			nd_conn_add_sleep_sock(nsk->nd_ctrl, nsk);
 		} 
-		err = sk_stream_wait_memory(sk, &timeo);
+		err = sk_stream_wait_memory(sk, &timeo);//阻塞等待资源释放或者超时
 		// pr_info("end wait \n");
 		if (err) {
 			goto out_error;
@@ -672,7 +681,7 @@ wait_for_memory:
 	return 0;
 out_error:
 	/* To Do: need to check whether kfree_skb should be called */
-	if(skb) {
+	if(skb) {//不为空的话仍然放到dcopy_resp_list中等待处理
 		ND_SKB_CB(skb)->seq = seq;
 		resp = kmalloc(sizeof(struct nd_dcopy_response), GFP_KERNEL);
 		resp->skb = skb;
@@ -736,7 +745,7 @@ static int nd_sendmsg_new2_locked(struct sock *sk, struct msghdr *msg, size_t le
 		/* this part might need to change latter */
 		/* decide to do local or remote data copy */
 		copy = min_t(int, max_segs * PAGE_SIZE / ND_MAX_SKB_LEN * ND_MAX_SKB_LEN, msg_data_left(msg));
-		//为什么要除了ND_MAX_SKB_LEN又乘上去？？？
+		//为什么要除了ND_MAX_SKB_LEN又乘上去？？？起一个取整的作用吗
 		if(copy == 0) {
 			WARN_ON(true);
 		}
@@ -769,7 +778,7 @@ static int nd_sendmsg_new2_locked(struct sock *sk, struct msghdr *msg, size_t le
 		bv_arr = kmalloc(MAX_PIN_PAGES * sizeof(struct bio_vec), GFP_KERNEL);
 		blen = nd_dcopy_iov_init(msg, &biter, bv_arr, copy, max_segs);
 		nr_segs = biter.nr_segs;
-		nsk->sender.pending_queue += blen;
+		nsk->sender.pending_queue += blen;//pending_queue表示等待队列的长度
 		if(blen < copy) {
 			// sk_mem_charge(sk, copy - blen);
 			// printk("wmem schedule 2: %d\n", sk->sk_forward_alloc);
@@ -819,9 +828,10 @@ local_sender_copy:
 		nsk->sender.write_seq += copy;
 		copied += copy;
 		if(eor) {
-			err = nd_push(sk, GFP_KERNEL);
+			err = nd_push(sk, GFP_KERNEL);//当最后一个消息处理完毕时push到网络层进行处理
 		}
 		if(READ_ONCE(sk->sk_backlog.tail) && nsk->sender.snd_una > nsk->sender.sd_grant_nxt) {
+			//backlog中有待处理的数据，并且发送窗口已经满了，释放锁并且暂停处理逻辑？？？
 			release_sock(sk);
 			lock_sock(sk);
 		}
@@ -846,7 +856,7 @@ wait_for_memory:
 	}
 	sk_wait_sender_data_copy(sk, &timeo);
 	// nd_fetch_dcopy_response(sk);
-	if (eor) {
+	if (eor) {//如果已经是最后一部分消息，push到网络层进行处理
 		// if(!skb_queue_empty(&sk->sk_write_queue)) {
 			err = nd_push(sk, GFP_KERNEL);
 			if(err == -EDQUOT){
@@ -879,7 +889,7 @@ out_error:
 	err = sk_stream_error(sk, msg->msg_flags, err);
 
 	/* make sure we wake any epoll edge trigger waiter */
-	if (unlikely(skb_queue_len(&sk->sk_write_queue) == 0 && err == -EAGAIN))
+	if (unlikely(skb_queue_len(&sk->sk_write_queue) == 0 && err == -EAGAIN))//发送队列为空但是可以重试
 		sk->sk_write_space(sk);
 
 	return err;
@@ -1184,13 +1194,12 @@ int nd_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 	} else if ((send_call_times==1)||(send_call_times==2)) send_call_times++;
 	// nd_rps_record_flow(sk);
 	ret = nd_sendmsg_new2_locked(sk, msg, len);
-	release_sock(sk);
+	release_sock(sk);//解锁套接字，允许其他线程继续使用该套接字
 	return ret;
 }
 EXPORT_SYMBOL(nd_sendmsg);
 
-int nd_sendpage(struct sock *sk, struct page *page, int offset,
-		 size_t size, int flags)
+int nd_sendpage(struct sock *sk, struct page *page, int offset, size_t size, int flags)
 {
 	printk(KERN_WARNING "unimplemented sendpage invoked on nd socket\n");
 	return -ENOSYS;
@@ -1241,11 +1250,11 @@ EXPORT_SYMBOL_GPL(nd_destruct_sock);
 int nd_init_sock(struct sock *sk)
 {
 	struct nd_sock* dsk = nd_sk(sk);
-	nd_set_state(sk, TCP_CLOSE);
-	skb_queue_head_init(&nd_sk(sk)->reader_queue);
-	dsk->core_id = raw_smp_processor_id();
+	nd_set_state(sk, TCP_CLOSE);//设置套接字状态
+	skb_queue_head_init(&nd_sk(sk)->reader_queue);//初始化reader_queue
+	dsk->core_id = raw_smp_processor_id();//创建并初始化该套接字的CPU id
 	// initialize the ready queue and its lock
-	sk->sk_destruct = nd_destruct_sock;
+	sk->sk_destruct = nd_destruct_sock;//回收函数
 	// sk->sk_write_space = sk_stream_write_space;
 	dsk->unsolved = 0;
 	// WRITE_ONCE(dsk->num_sacks, 0);
@@ -1254,10 +1263,10 @@ int nd_init_sock(struct sock *sk)
 	/* initialize the sndbuf and rcvbuf */
 	WRITE_ONCE(sk->sk_sndbuf, nd_params.wmem_default);
 	WRITE_ONCE(sk->sk_rcvbuf, nd_params.rmem_default);
-	WRITE_ONCE(dsk->default_win , min_t(uint32_t, nd_params.bdp, READ_ONCE(sk->sk_rcvbuf)));
+	WRITE_ONCE(dsk->default_win , min_t(uint32_t, nd_params.bdp, READ_ONCE(sk->sk_rcvbuf)));//初始窗口大小，为接收缓冲区与bdp的较小值
 
 	// INIT_LIST_HEAD(&dsk->match_link);
-	INIT_WORK(&dsk->tx_work, nd_tx_work);
+	INIT_WORK(&dsk->tx_work, nd_tx_work);//设置发送工作队列函数
 	INIT_LIST_HEAD(&dsk->tx_wait_list);
 	WRITE_ONCE(dsk->sender.wait_cpu, 0);
 	WRITE_ONCE(dsk->sender.wait_on_nd_conns, false);
@@ -1339,7 +1348,7 @@ EXPORT_SYMBOL(nd_ioctl);
 // int nd_recvmsg_new(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 // 		int flags, int *addr_len)
 // {
-
+//
 // 	struct nd_sock *dsk = nd_sk(sk);
 // 	int copied = 0;
 // 	// u32 peek_seq;
@@ -1357,7 +1366,7 @@ EXPORT_SYMBOL(nd_ioctl);
 // 	// int cmsg_flags;
 // 	// printk("recvmsg start \n");
 // 	// printk("rcvmsg core:%d\n", raw_smp_processor_id());
-	
+	//
 // 	/* hardcode for now */ 
 // 	// struct page *bpages[48];
 // 	// struct bio_vec bvec;
@@ -1368,7 +1377,7 @@ EXPORT_SYMBOL(nd_ioctl);
 // 	int nr_segs = 0;
 // 	int qid;
 // 	// printk("convert bytes:%ld\n", ret);
-
+//
 // 	// nd_rps_record_flow(sk);
 // 	WARN_ON(atomic_read(&dsk->receiver.in_flight_copy_bytes) != 0);
 // 	WARN_ON(!llist_empty(&dsk->receiver.clean_page_list));
@@ -1376,42 +1385,42 @@ EXPORT_SYMBOL(nd_ioctl);
 // 	// 	return inet_recv_error(sk, msg, len, addr_len);
 // 	// printk("start recvmsg \n");
 // 	target = sock_rcvlowat(sk, flags & MSG_WAITALL, len);
-
+//
 // 	// printk("target bytes:%d\n", target);
-
+//
 // 	if (sk_can_busy_loop(sk) && skb_queue_empty_lockless(&sk->sk_receive_queue) &&
 // 	    (sk->sk_state == ND_ESTABLISH))
 // 		sk_busy_loop(sk, nonblock);
-
+//
 // 	lock_sock(sk);
 // 	err = -ENOTCONN;
-
-
+//
+//
 // 	// cmsg_flags = tp->recvmsg_inq ? 1 : 0;
 // 	timeo = sock_rcvtimeo(sk, nonblock);
-
+//
 // 	if (sk->sk_state != ND_ESTABLISH)
 // 		goto out;
-
+//
 // 	/* init bvec page */	
 // 	bv_arr = kmalloc(MAX_PIN_PAGES * sizeof(struct bio_vec), GFP_KERNEL);
 // 	blen = nd_dcopy_iov_init(msg, &biter, bv_arr,  bremain, max_segs);
 // 	nr_segs = biter.nr_segs;
 // 	bremain -= blen;
-
-
-
+//
+//
+//
 // 	seq = &dsk->receiver.copied_seq;
 // 	dsk->receiver.nxt_dcopy_cpu = nd_params.data_cpy_core;
 // 	// printk("start queue\n");
 // 	do {
 // 		u32 offset;
 // 		/* Next get a buffer. */
-
+//
 // 		last = skb_peek_tail(&sk->sk_receive_queue);
 // 		skb_queue_walk_safe(&sk->sk_receive_queue, skb, tmp) {
 // 			last = skb;
-
+//
 // 			/* Now that we have two receive queues this
 // 			 * shouldn't happen.
 // 			 */
@@ -1420,9 +1429,9 @@ EXPORT_SYMBOL(nd_ioctl);
 // 				 *seq, ND_SKB_CB(skb)->seq, (u32)atomic_read(&dsk->receiver.rcv_nxt),
 // 				 flags))
 // 				break;
-
+//
 // 			offset = *seq - ND_SKB_CB(skb)->seq;
-
+//
 // 			if (offset < skb->len) {
 // 				goto found_ok_skb; 
 // 			}
@@ -1430,15 +1439,15 @@ EXPORT_SYMBOL(nd_ioctl);
 // 				WARN_ON(true);
 // 			}
 // 		}
-
-
+//
+//
 // 		/* ToDo: we have to check whether pending requests are done */
 // 		/* Well, if we have backlog, try to process it now yet. */
-
+//
 // 		if (copied >= target && !READ_ONCE(sk->sk_backlog.tail)) {
 // 			break;
 // 		}
-
+//
 // 		if (copied) {
 // 			if (sk->sk_err ||
 // 			    sk->sk_state == TCP_CLOSE ||
@@ -1449,15 +1458,15 @@ EXPORT_SYMBOL(nd_ioctl);
 // 		} else {
 // 			if (sock_flag(sk, SOCK_DONE))
 // 				break;
-
+//
 // 			if (sk->sk_err) {
 // 				copied = sock_error(sk);
 // 				break;
 // 			}
-
+//
 // 			if (sk->sk_shutdown & RCV_SHUTDOWN)
 // 				break;
-
+//
 // 			if (sk->sk_state == TCP_CLOSE) {
 // 				/* This occurs when user tries to read
 // 				 * from never connected socket.
@@ -1465,18 +1474,18 @@ EXPORT_SYMBOL(nd_ioctl);
 // 				copied = -ENOTCONN;
 // 				break;
 // 			}
-
+//
 // 			if (!timeo) {
 // 				copied = -EAGAIN;
 // 				break;
 // 			}
-
+//
 // 			if (signal_pending(current)) {
 // 				copied = sock_intr_errno(timeo);
 // 				break;
 // 			}
 // 		}
-
+//
 // 		// tcp_cleanup_rbuf(sk, copied);
 // 		// nd_try_send_ack(sk, copied);
 // 		// printk("release sock");
@@ -1488,13 +1497,13 @@ EXPORT_SYMBOL(nd_ioctl);
 // 		} else {
 // 			sk_wait_data(sk, &timeo, last);
 // 		}
-
+//
 // 		continue;
-
+//
 // found_ok_skb:
 // 		/* Ok so how much can we use? */
 // 		used = skb->len - offset;
-		
+//		
 // 		// if(blen == 0) {
 // 		// 	// pr_info("free bvec bv page:%d\n", __LINE__);
 // 		// 	// pr_info("biter.bvec->bv_page:%p\n", bv_arr->bv_page);
@@ -1507,14 +1516,14 @@ EXPORT_SYMBOL(nd_ioctl);
 // 		// }
 // 		if(blen < used)
 // 			used = blen;
-
+//
 // 		if (len < used) {
 // 			WARN_ON(true);
 // 			used = len;
 // 		}
-
+//
 //         // unsigned cpu = cpumask_first(cpu_online_mask);
-
+//
 //         // while (cpu < nr_cpu_ids) {
 //         //         pr_info("CPU: %u, freq: %u kHz\n", cpu, cpufreq_get(cpu));
 //         //         cpu = cpumask_next(cpu, cpu_online_mask);
@@ -1540,7 +1549,7 @@ EXPORT_SYMBOL(nd_ioctl);
 // 		/* update the biter */
 // 		iov_iter_advance(&biter, used);
 // 		blen -= used;
-
+//
 // 		if(blen == 0) {
 // 			request->bv_arr = bv_arr;
 // 			request->max_segs = nr_segs;
@@ -1557,7 +1566,7 @@ EXPORT_SYMBOL(nd_ioctl);
 // 		// 		break;
 // 		// 	}
 // 		// }
-
+//
 // 		WRITE_ONCE(*seq, *seq + used);
 // 		copied += used;
 // 		len -= used;
@@ -1568,16 +1577,16 @@ EXPORT_SYMBOL(nd_ioctl);
 // 		__skb_unlink(skb, &sk->sk_receive_queue);
 // 		// atomic_sub(skb->truesize, &sk->sk_rmem_alloc);
 // 		// kfree_skb(skb);
-
+//
 // queue_request:
 // 		atomic_add(used, &dsk->receiver.in_flight_copy_bytes);
 // 		/* queue the data copy request */
 // 		// pr_info("old msg->msg_iter.iov_base:%p\n", msg->msg_iter.iov->iov_base);
 // 		// pr_info("old msg->msg_iter.iov_len:%ld\n", msg->msg_iter.iov->iov_len);
-		
+//		
 // 		qid = nd_dcopy_queue_request(request);
 // 		// pr_info("queue request:%d, skb->len:%d req->len:%d \n", qid, skb->len, request->len);
-
+//
 // 		// if(dsk->receiver.nxt_dcopy_cpu == -1) {
 // 		// 	dsk->receiver.nxt_dcopy_cpu = qid;
 // 		// 	// printk("new qid:%d\n", qid);
@@ -1602,7 +1611,7 @@ EXPORT_SYMBOL(nd_ioctl);
 // 		// pr_info("start wait \n");
 // 		// sk_wait_data_copy(sk, &timeo);
 // 		// pr_info("finish wait \n");
-
+//
 // 		// dsk->receiver.nxt_dcopy_cpu = (dsk->receiver.nxt_dcopy_cpu + 4) % 32;
 // 		// if(dsk->receiver.nxt_dcopy_cpu == 0)
 // 		// 	dsk->receiver.nxt_dcopy_cpu = 4;
@@ -1611,16 +1620,16 @@ EXPORT_SYMBOL(nd_ioctl);
 // 		// iov_iter_advance(&msg->msg_iter, used);
 // 		// pr_info("advance \n");
 // 		continue;
-
+//
 // 		// if (copied > 3 * trigger_tokens * dsk->receiver.max_gso_data) {
 // 		// 	// nd_try_send_token(sk);
 // 		// 	trigger_tokens += 1;
-			
+//			
 // 		// }
 // 		// nd_try_send_token(sk);
-
+//
 // 		// tcp_rcv_space_adjust(sk);
-
+//
 // // skip_copy:
 // 		// if (tp->urg_data && after(tp->copied_seq, tp->urg_seq)) {
 // 		// 	tp->urg_data = 0;
@@ -1628,7 +1637,7 @@ EXPORT_SYMBOL(nd_ioctl);
 // 		// }
 // 		// if (used + offset < skb->len)
 // 		// 	continue;
-
+//
 // 		// if (TCP_SKB_CB(skb)->has_rxtstamp) {
 // 		// 	tcp_update_recv_tstamps(skb, &tss);
 // 		// 	cmsg_flags |= 2;
@@ -1638,7 +1647,7 @@ EXPORT_SYMBOL(nd_ioctl);
 // 		// if (!(flags & MSG_PEEK))
 // 		// 	sk_eat_skb(sk, skb);
 // 		// continue;
-
+//
 // // found_fin_ok:
 // 		/* Process the FIN. */
 // 		// WRITE_ONCE(*seq, *seq + 1);
@@ -1646,10 +1655,10 @@ EXPORT_SYMBOL(nd_ioctl);
 // 		// 	sk_eat_skb(sk, skb);
 // 		// break;
 // 	} while (len > 0);
-	
+//	
 // 	/* free the bvec memory */
-
-
+//
+//
 // 	/* According to UNIX98, msg_name/msg_namelen are ignored
 // 	 * on connected socket. I was just happy when found this 8) --ANK
 // 	 */
@@ -1686,21 +1695,21 @@ EXPORT_SYMBOL(nd_ioctl);
 // 	// 	}
 // 	// }
 // 	// printk("recvmsg\n");
-
+//
 // 	return copied;
-
+//
 // out:
 // 	release_sock(sk);
 // 	return err;
-
+//
 // // recv_urg:
 // // 	err = tcp_recv_urg(sk, msg, len, flags);
 // // 	goto out;
-
+//
 // // recv_sndq:
 // // 	// err = tcp_peek_sndq(sk, msg, len);
 // // 	goto out;
-// }
+// }*/
 
 
 //接收消息代码
@@ -2009,11 +2018,9 @@ out:
  * 	This should be easy, if there is something there we
  * 	return it, otherwise we block.
  */
-
 // int nd_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 // 		int flags, int *addr_len)
 // {
-
 // 	struct nd_sock *dsk = nd_sk(sk);
 // 	int copied = 0;
 // 	// u32 peek_seq;
@@ -2030,57 +2037,42 @@ out:
 // 	// int cmsg_flags;
 // 	// printk("recvmsg: sk->rxhash:%u\n", sk->sk_rxhash);
 // 	// printk("rcvmsg core:%d\n", raw_smp_processor_id());
-
 // 	// nd_rps_record_flow(sk);
-
 // 	// if (unlikely(flags & MSG_ERRQUEUE))
 // 	// 	return inet_recv_error(sk, msg, len, addr_len);
 // 	// printk("start recvmsg \n");
 // 	target = sock_rcvlowat(sk, flags & MSG_WAITALL, len);
-
 // 	// printk("target bytes:%d\n", target);
-
 // 	if (sk_can_busy_loop(sk) && skb_queue_empty_lockless(&sk->sk_receive_queue) &&
 // 	    (sk->sk_state == ND_ESTABLISH))
 // 		sk_busy_loop(sk, nonblock);
-
 // 	lock_sock(sk);
 // 	err = -ENOTCONN;
-
-
 // 	// cmsg_flags = tp->recvmsg_inq ? 1 : 0;
 // 	timeo = sock_rcvtimeo(sk, nonblock);
-
 // 	if (sk->sk_state != ND_ESTABLISH)
 // 		goto out;
 // 	/* Urgent data needs to be handled specially. */
 // 	// if (flags & MSG_OOB)
 // 	// 	goto recv_urg;
-
 // 	// if (unlikely(tp->repair)) {
 // 	// 	err = -EPERM;
 // 		// if (!(flags & MSG_PEEK))
 // 		// 	goto out;
-
 // 		// if (tp->repair_queue == TCP_SEND_QUEUE)
 // 		// 	goto recv_sndq;
-
 // 		// err = -EINVAL;
 // 		// if (tp->repair_queue == TCP_NO_QUEUE)
 // 		// 	goto out;
-
 // 		/* 'common' recv queue MSG_PEEK-ing */
 // //	}
-
 // 	seq = &dsk->receiver.copied_seq;
 // 	// if (flags & MSG_PEEK) {
 // 	// 	peek_seq = dsk->receiver.copied_seq;
 // 	// 	seq = &peek_seq;
 // 	// }
-
 // 	do {
 // 		u32 offset;
-
 // 		/* Are we at urgent data? Stop if we have read anything or have SIGURG pending. */
 // 		// if (tp->urg_data && tp->urg_seq == *seq) {
 // 		// 	if (copied)
@@ -2090,13 +2082,10 @@ out:
 // 		// 		break;
 // 		// 	}
 // 		// }
-
 // 		/* Next get a buffer. */
-
 // 		last = skb_peek_tail(&sk->sk_receive_queue);
 // 		skb_queue_walk_safe(&sk->sk_receive_queue, skb, tmp) {
 // 			last = skb;
-
 // 			/* Now that we have two receive queues this
 // 			 * shouldn't happen.
 // 			 */
@@ -2105,7 +2094,6 @@ out:
 // 				 *seq, ND_SKB_CB(skb)->seq, (u32)atomic_read(&dsk->receiver.rcv_nxt),
 // 				 flags))
 // 				break;
-
 // 			offset = *seq - ND_SKB_CB(skb)->seq;
 // 			// if (unlikely(TCP_SKB_CB(skb)->tcp_flags & TCPHDR_SYN)) {
 // 			// 	pr_err_once("%s: found a SYN, please report !\n", __func__);
@@ -2117,7 +2105,6 @@ out:
 // 			else {
 // 				WARN_ON(true);
 // 				// __skb_unlink(skb, &sk->sk_receive_queue);
-
 // 				// kfree_skb(skb);
 // 				// atomic_sub(skb->truesize, &sk->sk_rmem_alloc);
 // 			}
@@ -2127,14 +2114,10 @@ out:
 // 			//      "TCP recvmsg seq # bug 2: copied %X, seq %X, rcvnxt %X, fl %X\n",
 // 			//      *seq, ND_SKB_CB(skb)->seq, dsk->receiver.rcv_nxt, flags);
 // 		}
-
-
 // 		/* ToDo: we have to check whether pending requests are done */
 // 		/* Well, if we have backlog, try to process it now yet. */
-
 // 		if (copied >= target && !READ_ONCE(sk->sk_backlog.tail))
 // 			break;
-
 // 		if (copied) {
 // 			if (sk->sk_err ||
 // 			    sk->sk_state == TCP_CLOSE ||
@@ -2145,15 +2128,12 @@ out:
 // 		} else {
 // 			if (sock_flag(sk, SOCK_DONE))
 // 				break;
-
 // 			if (sk->sk_err) {
 // 				copied = sock_error(sk);
 // 				break;
 // 			}
-
 // 			if (sk->sk_shutdown & RCV_SHUTDOWN)
 // 				break;
-
 // 			if (sk->sk_state == TCP_CLOSE) {
 // 				/* This occurs when user tries to read
 // 				 * from never connected socket.
@@ -2161,18 +2141,15 @@ out:
 // 				copied = -ENOTCONN;
 // 				break;
 // 			}
-
 // 			if (!timeo) {
 // 				copied = -EAGAIN;
 // 				break;
 // 			}
-
 // 			if (signal_pending(current)) {
 // 				copied = sock_intr_errno(timeo);
 // 				break;
 // 			}
 // 		}
-
 // 		// tcp_cleanup_rbuf(sk, copied);
 // 		// nd_try_send_ack(sk, copied);
 // 		// printk("release sock");
@@ -2185,7 +2162,6 @@ out:
 // 		} else {
 // 			sk_wait_data(sk, &timeo, last);
 // 		}
-
 // 		// if ((flags & MSG_PEEK) &&
 // 		//     (peek_seq - copied - urg_hole != tp->copied_seq)) {
 // 		// 	net_dbg_ratelimited("TCP(%s:%d): Application bug, race in MSG_PEEK\n",
@@ -2194,14 +2170,12 @@ out:
 // 		// 	peek_seq = dsk->receiver.copied_seq;
 // 		// }
 // 		continue;
-
 // found_ok_skb:
 // 		/* Ok so how much can we use? */
 // 		used = skb->len - offset;
 // 		if (len < used)
 // 			used = len;
 // 		// nd_try_send_token(sk);
-
 // 		/* Do we have urgent data here? */
 // 		// if (tp->urg_data) {
 // 		// 	u32 urg_offset = tp->urg_seq - *seq;
@@ -2219,7 +2193,6 @@ out:
 // 		// 			used = urg_offset;
 // 		// 	}
 // 		// }
-
 // 		if (!(flags & MSG_TRUNC)) {
 // 			err = skb_copy_datagram_msg(skb, offset, msg, used);
 // 			// printk("copy data done: %d\n", used);
@@ -2231,7 +2204,6 @@ out:
 // 				break;
 // 			}
 // 		}
-
 // 		WRITE_ONCE(*seq, *seq + used);
 // 		copied += used;
 // 		len -= used;
@@ -2240,16 +2212,12 @@ out:
 // 		__skb_unlink(skb, &sk->sk_receive_queue);
 // 		// atomic_sub(skb->truesize, &sk->sk_rmem_alloc);
 // 		kfree_skb(skb);
-
 // 		// if (copied > 3 * trigger_tokens * dsk->receiver.max_gso_data) {
 // 		// 	// nd_try_send_token(sk);
-// 		// 	trigger_tokens += 1;
-			
+// 		// 	trigger_tokens += 1;			
 // 		// }
 // 		// nd_try_send_token(sk);
-
 // 		// tcp_rcv_space_adjust(sk);
-
 // // skip_copy:
 // 		// if (tp->urg_data && after(tp->copied_seq, tp->urg_seq)) {
 // 		// 	tp->urg_data = 0;
@@ -2257,7 +2225,6 @@ out:
 // 		// }
 // 		// if (used + offset < skb->len)
 // 		// 	continue;
-
 // 		// if (TCP_SKB_CB(skb)->has_rxtstamp) {
 // 		// 	tcp_update_recv_tstamps(skb, &tss);
 // 		// 	cmsg_flags |= 2;
@@ -2267,7 +2234,6 @@ out:
 // 		// if (!(flags & MSG_PEEK))
 // 		// 	sk_eat_skb(sk, skb);
 // 		continue;
-
 // // found_fin_ok:
 // 		/* Process the FIN. */
 // 		// WRITE_ONCE(*seq, *seq + 1);
@@ -2275,11 +2241,9 @@ out:
 // 		// 	sk_eat_skb(sk, skb);
 // 		// break;
 // 	} while (len > 0);
-
 // 	/* According to UNIX98, msg_name/msg_namelen are ignored
 // 	 * on connected socket. I was just happy when found this 8) --ANK
 // 	 */
-	
 // 	/* Clean up data we have read: This will do ACK frames. */
 // 	// tcp_cleanup_rbuf(sk, copied);
 // 	// nd_try_send_ack(sk, copied);
@@ -2290,7 +2254,6 @@ out:
 // 	// 	// nd_try_send_token(sk);
 // 	// }
 // 	release_sock(sk);
-
 // 	// if (cmsg_flags) {
 // 	// 	if (cmsg_flags & 2)
 // 	// 		tcp_recv_timestamp(msg, sk, &tss);
@@ -2301,15 +2264,12 @@ out:
 // 	// }
 // 	// printk("recvmsg\n");
 // 	return copied;
-
 // out:
 // 	release_sock(sk);
 // 	return err;
-
 // // recv_urg:
 // // 	err = tcp_recv_urg(sk, msg, len, flags);
 // // 	goto out;
-
 // // recv_sndq:
 // // 	// err = tcp_peek_sndq(sk, msg, len);
 // // 	goto out;
@@ -2359,14 +2319,14 @@ int nd_v4_early_demux(struct sk_buff *skb)
 
 /* oversize: -1, drop: -2, normal: 0 */
 int nd_rcv(struct sk_buff *skb)
-{
+{	//根据包的不同类型进行处理
 	// printk("receive nd rcv\n");
 	// skb_dump(KERN_WARNING, skb, false);
 	struct ndhdr* dh;
 	// printk("skb->len:%d\n", skb->len);
 	WARN_ON(skb == NULL);
 
-	if (!pskb_may_pull(skb, sizeof(struct ndhdr))) {
+	if (!pskb_may_pull(skb, sizeof(struct ndhdr))) {//检查头部是否完整
 		printk("header space not enough\n");
 		goto drop;		/* No space for header. */
 	}
@@ -2466,7 +2426,6 @@ void nd_destroy_sock(struct sock *sk)
 	/*  */
 	// bh_unlock_sock(sk);
 	// local_bh_enable();
-
 	// printk("sk->sk_wmem_queued:%d\n",sk->sk_wmem_queued);
 	// spin_lock_bh(&entry->lock);
 	// printk("dsk->match_link:%p\n", &up->match_link);
@@ -2559,7 +2518,6 @@ EXPORT_SYMBOL(nd_flow_hashrnd);
 // {
 // 	net->ipv4.sysctl_udp_rmem_min = SK_MEM_QUANTUM;
 // 	net->ipv4.sysctl_udp_wmem_min = SK_MEM_QUANTUM;
-
 // #ifdef CONFIG_NET_L3_MASTER_DEV
 // 	net->ipv4.sysctl_udp_l3mdev_accept = 0;
 // #endif

@@ -22,7 +22,7 @@ static void page_pool_dma_sync_for_device(struct page_pool *pool,
 	dma_sync_size = min(dma_sync_size, pool->p.max_len);
 	dma_sync_single_range_for_device(pool->p.dev, page->dma_addr,
 					 pool->p.offset, dma_sync_size,
-					 pool->p.dma_dir);
+					 pool->p.dma_dir);//允许设备直接访问内存而无需CPU的参与，通过设备与CPU之间内存的同步，来保证CPU读取到的一定是设备最新的数据
 }
 
 /* get dma address for recycle pages */

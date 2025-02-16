@@ -234,6 +234,7 @@ void nd_try_dcopy_send(struct nd_dcopy_request *req) {
 					       pfrag->page,
 					       pfrag->offset,
 					       copy);//最终数据被拷贝到了pfrag->page中，还没有串联到skb中
+						   //将数据从用户空间拷贝到内核的sk_buffer中
 		/* ToDo: handle the err */
 		if(err)
 			WARN_ON(true);

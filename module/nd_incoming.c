@@ -76,7 +76,7 @@
 // }
 
 
-static void nd_rfree(struct sk_buff *skb)
+static void nd_rfree(struct sk_buff *skb)//用于回收skb
 {
 	struct sock *sk = skb->sk;
 	// struct kcm_sock *kcm = kcm_sk(sk);
@@ -90,7 +90,7 @@ static void nd_rfree(struct sk_buff *skb)
 
 	/* For reading rx_wait and rx_psock without holding lock */
 	// smp_mb__after_atomic();
-
+//
 	// if (!kcm->rx_wait && !kcm->rx_psock &&
 	//     sk_rmem_alloc_get(sk) < sk->sk_rcvlowat) {
 	// 	spin_lock_bh(&mux->rx_lock);
@@ -167,14 +167,14 @@ int nd_clean_rtx_queue(struct sock *sk)
 		// 	WARN_ON_ONCE(last_ackt == 0);
 		// 	if (!first_ackt)
 		// 		first_ackt = last_ackt;
-
+//
 		// 	last_in_flight = TCP_SKB_CB(skb)->tx.in_flight;
 		// 	if (before(start_seq, reord))
 		// 		reord = start_seq;
 		// 	if (!after(scb->end_seq, tp->high_seq))
 		// 		flag |= FLAG_ORIG_SACK_ACKED;
 		// }
-
+//
 		// if (sacked & TCPCB_SACKED_ACKED) {
 		// 	tp->sacked_out -= acked_pcount;
 		// } else if (tcp_is_sack(tp)) {
@@ -185,11 +185,11 @@ int nd_clean_rtx_queue(struct sock *sk)
 		// }
 		// if (sacked & TCPCB_LOST)
 		// 	tp->lost_out -= acked_pcount;
-
+//
 		// tp->packets_out -= acked_pcount;
 		// pkts_acked += acked_pcount;
 		// tcp_rate_skb_delivered(sk, skb, sack->rate);
-
+//
 		/* Initial outgoing SYN's get put onto the write_queue
 		 * just like anything else we transmit.  It is not
 		 * true data, and if we misinform our callers that
@@ -218,17 +218,17 @@ int nd_clean_rtx_queue(struct sock *sk)
 	}
 	// if (!skb)
 	// 	tcp_chrono_stop(sk, TCP_CHRONO_BUSY);
-
+	//
 	// if (likely(between(tp->snd_up, prior_snd_una, tp->snd_una)))
 	// 	tp->snd_up = tp->snd_una;
-
+//
 	// if (skb && (TCP_SKB_CB(skb)->sacked & TCPCB_SACKED_ACKED))
 	// 	flag |= FLAG_SACK_RENEGING;
-
+//
 	// if (likely(first_ackt) && !(flag & FLAG_RETRANS_DATA_ACKED)) {
 	// 	seq_rtt_us = tcp_stamp_us_delta(tp->tcp_mstamp, first_ackt);
 	// 	ca_rtt_us = tcp_stamp_us_delta(tp->tcp_mstamp, last_ackt);
-
+//
 	// 	if (pkts_acked == 1 && last_in_flight < tp->mss_cache &&
 	// 	    last_in_flight && !prior_sacked && fully_acked &&
 	// 	    sack->rate->prior_delivered + 1 == tp->delivered &&
@@ -246,17 +246,17 @@ int nd_clean_rtx_queue(struct sock *sk)
 	// }
 	// rtt_update = tcp_ack_update_rtt(sk, flag, seq_rtt_us, sack_rtt_us,
 	// 				ca_rtt_us, sack->rate);
-
+//
 	// if (flag & FLAG_ACKED) {
 	// 	flag |= FLAG_SET_XMIT_TIMER;  /* set TLP or RTO timer */
 	// 	if (unlikely(icsk->icsk_mtup.probe_size &&
 	// 		     !after(tp->mtu_probe.probe_seq_end, tp->snd_una))) {
 	// 		tcp_mtup_probe_success(sk);
 	// 	}
-
+//
 	// 	if (tcp_is_reno(tp)) {
 	// 		tcp_remove_reno_sacks(sk, pkts_acked);
-
+//
 	// 		/* If any of the cumulatively ACKed segments was
 	// 		 * retransmitted, non-SACK case cannot confirm that
 	// 		 * progress was due to original transmission due to
@@ -267,11 +267,11 @@ int nd_clean_rtx_queue(struct sock *sk)
 	// 			flag &= ~FLAG_ORIG_SACK_ACKED;
 	// 	} else {
 	// 		int delta;
-
+//
 	// 		/* Non-retransmitted hole got filled? That's reordering */
 	// 		if (before(reord, prior_fack))
 	// 			tcp_check_sack_reordering(sk, reord, 0);
-
+//
 	// 		delta = prior_sacked - tp->sacked_out;
 	// 		tp->lost_cnt_hint -= min(tp->lost_cnt_hint, delta);
 	// 	}
@@ -284,12 +284,12 @@ int nd_clean_rtx_queue(struct sock *sk)
 	// 	 */
 	// 	flag |= FLAG_SET_XMIT_TIMER;  /* set TLP or RTO timer */
 	// }
-
+//
 	// if (icsk->icsk_ca_ops->pkts_acked) {
 	// 	struct ack_sample sample = { .pkts_acked = pkts_acked,
 	// 				     .rtt_us = sack->rate->rtt_us,
 	// 				     .in_flight = last_in_flight };
-
+//
 	// 	icsk->icsk_ca_ops->pkts_acked(sk, &sample);
 	// }
 	return flag;
@@ -354,20 +354,19 @@ static void nd_drop(struct sock *sk, struct sk_buff *skb)
         // __kfree_skb(skb);
 }
 
-static void nd_v4_fill_cb(struct sk_buff *skb,
-                           const struct ndhdr *dh)
+static void nd_v4_fill_cb(struct sk_buff *skb, const struct ndhdr *dh)//将dh信息填充到skb的cb中，主要是seq和end_seq
 {
-        /* This is tricky : We move IPCB at its correct location into TCP_SKB_CB()
-         * barrier() makes sure compiler wont play fool^Waliasing games.
-         */
-        // memmove(&ND_SKB_CB(skb)->header.h4, IPCB(skb),
-        //         sizeof(struct inet_skb_parm));
-        barrier();
-        ND_SKB_CB(skb)->seq = ntohl(dh->seq);
-        // printk("skb len:%d\n", skb->len);
-        // printk("segment length:%d\n", ntohl(dh->seg.segment_length));
-        ND_SKB_CB(skb)->end_seq = ND_SKB_CB(skb)->seq + skb->len - dh->doff / 4;
-        // TCP_SKB_CB(skb)->ack_seq = ntohl(th->ack_seq);
+    /* This is tricky : We move IPCB at its correct location into TCP_SKB_CB()
+     * barrier() makes sure compiler wont play fool^Waliasing games.
+     */
+    // memmove(&ND_SKB_CB(skb)->header.h4, IPCB(skb),
+    //         sizeof(struct inet_skb_parm));
+    barrier();
+    ND_SKB_CB(skb)->seq = ntohl(dh->seq);
+    // printk("skb len:%d\n", skb->len);
+    // printk("segment length:%d\n", ntohl(dh->seg.segment_length));
+    ND_SKB_CB(skb)->end_seq = ND_SKB_CB(skb)->seq + skb->len - dh->doff / 4;
+    // TCP_SKB_CB(skb)->ack_seq = ntohl(th->ack_seq);
         // TCP_SKB_CB(skb)->tcp_flags = tcp_flag_byte(th);
         // TCP_SKB_CB(skb)->tcp_tw_isn = 0;
         // TCP_SKB_CB(skb)->ip_dsfield = ipv4_get_dsfield(iph);
@@ -391,16 +390,13 @@ static void nd_v4_fill_cb(struct sk_buff *skb,
  * Better try to coalesce them right now to avoid future collapses.
  * Returns true if caller should free @from instead of queueing it
  */
-static bool nd_try_coalesce(struct sock *sk,
-			     struct sk_buff *to,
-			     struct sk_buff *from,
-			     bool *fragstolen)
+static bool nd_try_coalesce(struct sock *sk, struct sk_buff *to, struct sk_buff *from, bool *fragstolen)
 {
 	int delta;
 	// int skb_truesize = from->truesize;
 	*fragstolen = false;
 	/* Its possible this segment overlaps with prior segment in queue */
-	if (ND_SKB_CB(from)->seq != ND_SKB_CB(to)->end_seq)
+	if (ND_SKB_CB(from)->seq != ND_SKB_CB(to)->end_seq)//验证序列号
 		return false;
 	// pr_info("to len: %d\n", to->len);
 	// pr_info("to truesize len: %d\n", to->truesize);
@@ -413,13 +409,13 @@ static bool nd_try_coalesce(struct sock *sk,
 	// }
 	// pr_info("from skb len :%d\n", from->len);
 	// pr_info(" SKB_TRUESIZE(skb_end_offset(from):%d\n", skb_end_offset(from));s
-	if (!skb_try_coalesce(to, from, fragstolen, &delta))
+	if (!skb_try_coalesce(to, from, fragstolen, &delta))//尝试合并
 		return false;
 	/* assume we have alrady add true size beforehand*/
-	atomic_add(delta, &sk->sk_rmem_alloc);
+	atomic_add(delta, &sk->sk_rmem_alloc);//更新接收缓冲区的内存分配
 	// sk_mem_charge(sk, delta);
 	// NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPRCVCOALESCE);
-	ND_SKB_CB(to)->end_seq = ND_SKB_CB(from)->end_seq;
+	ND_SKB_CB(to)->end_seq = ND_SKB_CB(from)->end_seq;//合并完成后更新to的end_seq
 	// ND_SKB_CB(to)->ack_seq = ND_SKB_CB(from)->ack_seq;
 	// ND_SKB_CB(to)->tcp_flags |= ND_SKB_CB(from)->tcp_flags;
 
@@ -450,8 +446,8 @@ static int nd_data_queue_ofo(struct sock *sk, struct sk_buff *skb)
 
 	// printk("insert to data queue ofo:%d\n", seq);
 
-	p = &dsk->out_of_order_queue.rb_node;
-	if (RB_EMPTY_ROOT(&dsk->out_of_order_queue)) {
+	p = &dsk->out_of_order_queue.rb_node;//指向红黑树的根节点
+	if (RB_EMPTY_ROOT(&dsk->out_of_order_queue)) {//红黑树为空，直接插入
 		/* Initial out of order segment, build 1 SACK. */
 		// if (tcp_is_sack(tp)) {
 		// 	tp->rx_opt.num_sacks = 1;
@@ -484,15 +480,17 @@ static int nd_data_queue_ofo(struct sock *sk, struct sk_buff *skb)
 
 	/* Find place to insert this segment. Handle overlaps on the way. */
 	parent = NULL;
-	while (*p) {
+	while (*p) {//在红黑树中找到合适的位置
 		parent = *p;
 		skb1 = rb_to_skb(parent);
-		if (before(seq, ND_SKB_CB(skb1)->seq)) {
+		if (before(seq, ND_SKB_CB(skb1)->seq)) {//在其seq之前，继续遍历左子树
 			p = &parent->rb_left;
 			continue;
 		}
-		if (before(seq, ND_SKB_CB(skb1)->end_seq)) {
-			if (!after(end_seq, ND_SKB_CB(skb1)->end_seq)) {
+		//seq>=skb1->seq
+		if (before(seq, ND_SKB_CB(skb1)->end_seq)) {//skb1->seq<=seq<skb1->end_seq
+
+			if (!after(end_seq, ND_SKB_CB(skb1)->end_seq)) {//skb1->seq<=seq<end_seq<skb1->end_seq，即skb被skb1包含，直接丢弃
 				/* All the bits are present. Drop. */
 				nd_rmem_free_skb(sk, skb);
 				nd_drop(sk, skb);
@@ -501,15 +499,16 @@ static int nd_data_queue_ofo(struct sock *sk, struct sk_buff *skb)
 				// tcp_dsack_set(sk, seq, end_seq);
 				goto add_sack;
 			}
-			if (after(seq, ND_SKB_CB(skb1)->seq)) {
+			if (after(seq, ND_SKB_CB(skb1)->seq)) {//skb1->seq<seq<end_seq<skb1->end_seq，即部分重叠
+			//直接插入不做任何处理吗？？？
 				/* Partial overlap. */
 				// tcp_dsack_set(sk, seq, TCP_SKB_CB(skb1)->end_seq);
 			} else {
 				/* skb's seq == skb1's seq and skb covers skb1.
 				 * Replace skb1 with skb.
 				 */
-				rb_replace_node(&skb1->rbnode, &skb->rbnode,
-						&dsk->out_of_order_queue);
+				//新的skb和skb1有相同的seq，并且完全包含了skb1，利用skb替换skb1，并且将skb1从红黑树中删除
+				rb_replace_node(&skb1->rbnode, &skb->rbnode, &dsk->out_of_order_queue);
 				// tcp_dsack_extend(sk,
 				// 		 TCP_SKB_CB(skb1)->seq,
 				// 		 TCP_SKB_CB(skb1)->end_seq);
@@ -524,22 +523,26 @@ static int nd_data_queue_ofo(struct sock *sk, struct sk_buff *skb)
 		// 				skb, &fragstolen)) {
 		// 	goto coalesce_done;
 		// }
+		//seq在skb1->end_seq之后，继续遍历右子树
 		p = &parent->rb_right;
 	}
 // insert:
 	/* Insert segment into RB tree. */
-	rb_link_node(&skb->rbnode, parent, p);
+	rb_link_node(&skb->rbnode, parent, p);//在p的位置进行插入
 	rb_insert_color(&skb->rbnode, &dsk->out_of_order_queue);
 merge_right:
 	/* Remove other segments covered by skb. */
-	while ((skb1 = skb_rb_next(skb)) != NULL) {
-		if (!after(end_seq, ND_SKB_CB(skb1)->seq))
+	while ((skb1 = skb_rb_next(skb)) != NULL) {//这里next已经隐含了seq<skb1_seq
+		if (!after(end_seq, ND_SKB_CB(skb1)->seq))//end<=skb1->seq，即skb1在skb之后
 			break;
-		if (before(end_seq, ND_SKB_CB(skb1)->end_seq)) {
+		if (before(end_seq, ND_SKB_CB(skb1)->end_seq)) {//end_seq<skb1->end_seq，当前包没有完全覆盖skb1
 			// tcp_dsack_extend(sk, TCP_SKB_CB(skb1)->seq,
 			// 		 end_seq);
 			break;
 		}
+		//end_seq>skb1->seq，并且end_seq>=skb1_end_seq
+		//这里为什么仅仅判断结束序列号而不判断开始序列号？？？
+		//skb1完全被skb包含，进行清除
 		rb_erase(&skb1->rbnode, &dsk->out_of_order_queue);
 		// tcp_dsack_extend(sk, TCP_SKB_CB(skb1)->seq,
 		// 		 TCP_SKB_CB(skb1)->end_seq);
@@ -555,10 +558,10 @@ add_sack:
 	// if (tcp_is_sack(tp))
 	// nd_sack_new_ofo_skb(sk, seq, end_seq);
 end:
-	if(skb) {
+	if(skb) {//skb没有被丢弃，设置相关的属性标识如sk和回收函数
 		skb->sk = sk;
 		skb->destructor = nd_rfree;
-		atomic_add(skb->truesize, &sk->sk_rmem_alloc);
+		atomic_add(skb->truesize, &sk->sk_rmem_alloc);//增加套接字接收内存的大小
 		// sk_mem_charge(sk, skb->truesize);
 		// ofo_queue += skb->len;
 		// pr_info("ofo queue length:%u\n", ofo_queue);
@@ -571,7 +574,7 @@ end:
 	// }
 }
 
-static void nd_ofo_queue(struct sock *sk)
+static void nd_ofo_queue(struct sock *sk)//针对out_of_order_queue中的skb，如果其为现在所需的下一个skb，将其移动到receive_queue中
 {
 	struct nd_sock *dsk = nd_sk(sk);
 	// __u32 dsack_high = nd->receiver.rcv_nxt;
@@ -581,22 +584,23 @@ static void nd_ofo_queue(struct sock *sk)
 	struct rb_node *p;
 	// bool first = true;
 	// u32 start = 0, end = 0;
-	p = rb_first(&dsk->out_of_order_queue);
+	p = rb_first(&dsk->out_of_order_queue);//红黑树的第一个节点指针
 	while (p) {
 		skb = rb_to_skb(p);
-		if (after(ND_SKB_CB(skb)->seq,(u32)atomic_read(&dsk->receiver.rcv_nxt)))
+		if (after(ND_SKB_CB(skb)->seq,(u32)atomic_read(&dsk->receiver.rcv_nxt)))//红黑树中最小的seq仍然过大，直接break
 			break;
 		// ofo_queue -= skb->len;
-
+	
 		// if (before(ND_SKB_CB(skb)->seq, dsack_high)) {
 		// 	// __u32 dsack = dsack_high;
 		// 	// if (before(TCP_SKB_CB(skb)->end_seq, dsack_high))
 		// 	// 	dsack_high = TCP_SKB_CB(skb)->end_seq;
 		// 	// tcp_dsack_extend(sk, TCP_SKB_CB(skb)->seq, dsack);
 		// }
-		p = rb_next(p);
-		rb_erase(&skb->rbnode, &dsk->out_of_order_queue);
-		if (unlikely(!after(ND_SKB_CB(skb)->end_seq, (u32)atomic_read(&dsk->receiver.rcv_nxt)))) {
+		//此时当前的节点的开始seq小于等于rcv_nxt
+		p = rb_next(p);//指向下一个节点
+		rb_erase(&skb->rbnode, &dsk->out_of_order_queue);//将当前节点从红黑树中删除
+		if (unlikely(!after(ND_SKB_CB(skb)->end_seq, (u32)atomic_read(&dsk->receiver.rcv_nxt)))) {//end_seq<=rcv_nxt，即当前的数据包已经被接受了，该skb已经无效
 			nd_rmem_free_skb(sk, skb);
 			nd_drop(sk, skb);
 			continue;
@@ -606,14 +610,16 @@ static void nd_ofo_queue(struct sock *sk)
 		// 	start =  ND_SKB_CB(skb)->seq;
 		// }
 		// end = ND_SKB_CB(skb)->end_seq;
-		tail = skb_peek_tail(&sk->sk_receive_queue);
-		eaten = tail && nd_try_coalesce(sk, tail, skb, &fragstolen);
-		nd_rcv_nxt_update(dsk, ND_SKB_CB(skb)->end_seq);
+		//此时当前的skb满足seq<=rcv_nxt<end_seq，即有内容可以进行交付
+		tail = skb_peek_tail(&sk->sk_receive_queue);//从receive_queue中取出最后一个skb
+		eaten = tail && nd_try_coalesce(sk, tail, skb, &fragstolen);//尝试合并
+		//这里只是比较了seq是否能够接上，但是并没有考虑到两个包之间有一部分数据重合的场景？？？？
+		nd_rcv_nxt_update(dsk, ND_SKB_CB(skb)->end_seq);//更新recv_next
 		// fin = TCP_SKB_CB(skb)->tcp_flags & TCPHDR_FIN;
-		if (!eaten)
+		if (!eaten)//合并失败，将当前的skb插入到receive_queue中
 			__skb_queue_tail(&sk->sk_receive_queue, skb);
 		else
-			kfree_skb_partial(skb, fragstolen);
+			kfree_skb_partial(skb, fragstolen);//合并成功，释放当前skb的内存
 
 		// if (unlikely(fin)) {
 		// 	tcp_fin(sk);
@@ -649,22 +655,21 @@ int nd_handle_sync_pkt(struct sk_buff *skb) {
 	struct nd_sock *nsk;
 	int sdif = inet_sdif(skb);
 	bool refcounted = false;
-	if (!pskb_may_pull(skb, sizeof(struct ndhdr))) {
+	if (!pskb_may_pull(skb, sizeof(struct ndhdr))) {//检查是否至少包含ndhdr
 		goto drop;		/* No space for header. */
 	}
-	fh =  nd_hdr(skb);
+	fh =  nd_hdr(skb);//这里是直接得到的数据包的传输层头部指针
 	// sk = skb_steal_sock(skb);
 	// if(!sk) {
 		// printk("fh->source:%d\n", ntohs(fh->source));
 		// printk("fh->dest:%d\n", ntohs(fh->dest));
 	// printk ("dev_net(skb_dst(skb)->dev): %d \n",(skb_dst(skb) == NULL));
 	// printk("sdif:%d\n", sdif);
-	sk = __nd_lookup_skb(&nd_hashinfo, skb, __nd_hdrlen(fh), fh->source,
-		fh->dest, sdif, &refcounted);
+	sk = __nd_lookup_skb(&nd_hashinfo, skb, __nd_hdrlen(fh), fh->source, fh->dest, sdif, &refcounted);//根据源目的地址查找套接字
 		// sk = __nd4_lib_lookup_skb(skb, fh->common.source, fh->common.dest, &nd_table);
 	// }
 	if(sk) {
-		child = nd_conn_request(sk, skb);
+		child = nd_conn_request(sk, skb);//在收到连接建立请求的时候生成一个子套接字，并且通过该子套接字来进行传输吗？？？
 		if(child) {
 			nsk = nd_sk(child);
 			// struct nd_sock *dsk = nd_sk(child);
@@ -736,7 +741,7 @@ int nd_handle_token_pkt(struct sk_buff *skb) {
 	 //    } else {
 	 // 		test_and_set_bit(ND_RTX_DEFERRED, &sk->sk_tsq_flags);
 	 //    }
-
+	 //
         // } else {
         // 	// if(backlog_time % 100 == 0) {
         // 		// end = ktime_get();
@@ -914,15 +919,14 @@ int nd_handle_fin_pkt(struct sk_buff *skb) {
 }
 
 
-static int  nd_queue_rcv(struct sock *sk, struct sk_buff *skb,  bool *fragstolen)
+static int nd_queue_rcv(struct sock *sk, struct sk_buff *skb,  bool *fragstolen)
 {
 	int eaten;
-	struct sk_buff *tail = skb_peek_tail(&sk->sk_receive_queue);
+	struct sk_buff *tail = skb_peek_tail(&sk->sk_receive_queue);//取出接收队列最后一个数据包
 
-	eaten = (tail &&
-		 nd_try_coalesce(sk, tail,
-				  skb, fragstolen)) ? 1 : 0;
-	if (!eaten) {
+	eaten = (tail && nd_try_coalesce(sk, tail, skb, fragstolen)) ? 1 : 0;//尝试与尾部数据包进行合并，eaten为1表示合并成功
+	if (!eaten) {//没有合并成功？？为什么会合并失败？不是在调用nd_queue_rcv之前已经确认了当前的skb就是接受队列所需的下一个报文吗？
+	//合并失败，手动加入到receive_queue中
 		skb->sk = sk;
 		skb->destructor = nd_rfree;
 		atomic_add(skb->truesize, &sk->sk_rmem_alloc);
@@ -931,6 +935,7 @@ static int  nd_queue_rcv(struct sock *sk, struct sk_buff *skb,  bool *fragstolen
 		
 		// skb_set_owner_r(skb, sk);
 	}
+	//最终增加下一个期望的序列号
 	nd_rcv_nxt_update(nd_sk(sk), ND_SKB_CB(skb)->end_seq);
 	return eaten;
 }
@@ -940,7 +945,7 @@ int nd_data_queue(struct sock *sk, struct sk_buff *skb)
 	struct nd_sock *dsk = nd_sk(sk);
 	bool fragstolen;
 	int eaten;
-	if (ND_SKB_CB(skb)->seq == ND_SKB_CB(skb)->end_seq) {
+	if (ND_SKB_CB(skb)->seq == ND_SKB_CB(skb)->end_seq) {//skb不包含有效数据，直接丢弃这个数据包
 		nd_rmem_free_skb(sk, skb);
 		return 0;
 	}
@@ -956,7 +961,7 @@ int nd_data_queue(struct sock *sk, struct sk_buff *skb)
 	// if (!sk_rmem_schedule(sk, skb, skb->truesize))
 	// 	return -ENOBUFS;
 	// atomic_add(skb->truesize, &sk->sk_rmem_alloc);
-
+	//
 	// skb_dst_drop(skb);
 	// __skb_pull(skb, nd_hdr(skb)->doff >> 2);
 	// printk("handle packet data queue?:%d\n", ND_SKB_CB(skb)->seq);
@@ -965,7 +970,7 @@ int nd_data_queue(struct sock *sk, struct sk_buff *skb)
 	 *  Packets in sequence go to the receive queue.
 	 *  Out of sequence packets to the out_of_order_queue.
 	 */
-	if (ND_SKB_CB(skb)->seq == (u32)atomic_read(&dsk->receiver.rcv_nxt)) {
+	if (ND_SKB_CB(skb)->seq == (u32)atomic_read(&dsk->receiver.rcv_nxt)) {//数据包顺序正确
 		// if (tcp_receive_window(tp) == 0) {
 		// 	NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPZEROWINDOWDROP);
 		// 	goto out_of_window;
@@ -982,7 +987,7 @@ int nd_data_queue(struct sock *sk, struct sk_buff *skb)
 queue_and_out:
 		eaten = nd_queue_rcv(sk, skb, &fragstolen);
 
-		if (!RB_EMPTY_ROOT(&dsk->out_of_order_queue)) {
+		if (!RB_EMPTY_ROOT(&dsk->out_of_order_queue)) {//检查out_of_order_queue中是否有数据包，如果有，尝试进行处理
 			nd_ofo_queue(sk);
 		}
 
@@ -999,10 +1004,10 @@ queue_and_out:
 		// tcp_fast_path_check(sk);
 
 		if (eaten > 0)
-			kfree_skb_partial(skb, fragstolen);
+			kfree_skb_partial(skb, fragstolen);//当前的skb被成功合并进入前一个数据包中，清除当前skb占用的内存
 		return 0;
 	}
-	if (!after(ND_SKB_CB(skb)->end_seq, (u32)atomic_read(&dsk->receiver.rcv_nxt))) {
+	if (!after(ND_SKB_CB(skb)->end_seq, (u32)atomic_read(&dsk->receiver.rcv_nxt))) {//end_seq<=rcv_nxt，进行丢包
 		printk("duplicate drop\n");
 		printk("duplicate seq:%u\n", ND_SKB_CB(skb)->seq);
 		nd_rmem_free_skb(sk, skb);
@@ -1013,7 +1018,6 @@ queue_and_out:
 	/* Out of window. F.e. zero window probe. */
 	// if (!before(ND_SKB_CB(skb)->seq, dsk->rcv_nxt + tcp_receive_window(dsk)))
 	// 	goto out_of_window;
-
 	if (unlikely(before(ND_SKB_CB(skb)->seq, (u32)atomic_read(&dsk->receiver.rcv_nxt)))) {
 		/* Partial packet, seq < rcv_next < end_seq; unlikely */
 		// tcp_dsack_set(sk, ND_SKB_CB(skb)->seq, dsk->rcv_nxt);
@@ -1026,15 +1030,15 @@ queue_and_out:
 		// 	NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPZEROWINDOWDROP);
 		// 	goto out_of_window;
 		// }
-		goto queue_and_out;
+		goto queue_and_out;//部分到达，仍然放入接收队列中吗？？这样是否会导致接收队列出现重复的部分？？？
 	}
 
-	nd_data_queue_ofo(sk, skb);
+	nd_data_queue_ofo(sk, skb);//seq>rcv_nxt，放入ofo_queue中
 	return 0;
 }
 
 bool nd_add_backlog(struct sock *sk, struct sk_buff *skb, bool omit_check)
-{
+{//返回true没能放入成功（队列已满），false标识成功加入
 		// struct nd_sock *dsk = nd_sk(sk);
         u32 limit = READ_ONCE(sk->sk_rcvbuf) + READ_ONCE(sk->sk_sndbuf);
         // pr_info("put into the backlog\n:wq");
@@ -1048,7 +1052,7 @@ bool nd_add_backlog(struct sock *sk, struct sk_buff *skb, bool omit_check)
         if (omit_check) {
         	limit = UINT_MAX;
         }
-        if (unlikely(sk_add_backlog(sk, skb, limit))) {
+        if (unlikely(sk_add_backlog(sk, skb, limit))) {//成功放入之后，解除对于socket的锁定
                 bh_unlock_sock(sk);
                 // __NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPBACKLOGDROP);
                 return true;
@@ -1058,19 +1062,19 @@ bool nd_add_backlog(struct sock *sk, struct sk_buff *skb, bool omit_check)
         // atomic_add(skb->truesize, &dsk->receiver.backlog_len);
 
         return false;
-
  }
 
 static void nd_handle_data_skb_new(struct sock* sk, struct sk_buff* skb) {
 		// pr_info("ND_SKB_CB(head)->seq = seq:%u core:%d \n", ND_SKB_CB(skb)->seq, raw_smp_processor_id());
-		__skb_pull(skb, nd_hdr(skb)->doff >> 2);
+		__skb_pull(skb, nd_hdr(skb)->doff >> 2);//调整数据包的指针位置，跳过自定义报文头ndhdr，使得data指针直接指向数据段（也即真正的TCP字段？？？）
+		//在实际的结构中，是ndhdr包着TCP吗？还是反过来？？？
 		nd_data_queue(sk, skb);
 	return ;
 }
 
 /* assuming hold the bh lock of sock */
 static void nd_handle_data_pkt_lock(struct sock *sk, struct sk_buff *skb) {
-	if (!sock_owned_by_user(sk)) {
+	if (!sock_owned_by_user(sk)) {//检查该套接字是否被用户占用，如果没有，则可以进行包处理
 		/* current place to set rxhash for RFS/RPS */
 		// printk("skb->hash:%u\n", skb->hash);
 		// sock_rps_save_rxhash(sk, skb)
@@ -1078,10 +1082,10 @@ static void nd_handle_data_pkt_lock(struct sock *sk, struct sk_buff *skb) {
 		nd_handle_data_skb_new(sk, skb);
 		// nd_send_grant(dsk, false);
 		if (!sock_flag(sk, SOCK_DEAD)) {
-			sk->sk_data_ready(sk);
+			sk->sk_data_ready(sk);//这里的回调函数具体是什么呢？？？？？是默认的吗？？？
 		}
 		// nd_check_flow_finished_at_receiver(dsk);;
-	} else {
+	} else {//否则将数据包放入backlog延迟处理
 		// printk("add to backlog: %d\n", raw_smp_processor_id());
 		/* omit check for now */
 		nd_add_backlog(sk, skb, true);
@@ -1109,9 +1113,9 @@ int nd_handle_data_pkt(struct sk_buff *skb)
 	/* ToDo: get sdif value; now it is polluted by TCP layer */
 	// int sdif = inet_sdif(skb);
 	int sdif = 0;
-	bool refcounted = false;
-	bool discard = false;
-	bool oversize = false;
+	bool refcounted = false;//是否增加了引用计数
+	bool discard = false;//是否需要丢弃
+	bool oversize = false;//数据包是否超出窗口
 	// printk("receive data pkt\n");
 	if (!pskb_may_pull(skb, sizeof(struct ndhdr)))
 		goto drop;		/* No space for header. */
@@ -1121,15 +1125,14 @@ int nd_handle_data_pkt(struct sk_buff *skb)
 	// if(!sk) {
 	// WARN_ON(skb_dst(skb) == NULL);
 	// WARN_ON(skb_dst(skb)->dev == NULL);
-	sk = __nd_lookup_skb(&nd_hashinfo, skb, __nd_hdrlen(dh), dh->source,
-            dh->dest, sdif, &refcounted);
+	sk = __nd_lookup_skb(&nd_hashinfo, skb, __nd_hdrlen(dh), dh->source, dh->dest, sdif, &refcounted);//根据源地址和目的地址查找对应的（虚拟）套接字
 	// printk("dh->source:%d dh->dest:%d \n", dh->source, dh->dest);
 	// printk("iph->saddr:%d iph->daddr:%d\n", iph->saddr, iph->daddr);
 	// printk("__nd_hdrlen(dh):%d sdif:%d inet_iif(skb):%d \n", __nd_hdrlen(dh), sdif, inet_iif(skb));
     if(!sk) {
     	goto drop;
 	}
-	nd_v4_fill_cb(skb, dh);
+	nd_v4_fill_cb(skb, dh);//将ndhdr的seq填充到skb中，便于之后收包时候的处理
 
     // }
 	// printk("packet hash %u\n", skb->hash);
@@ -1138,25 +1141,32 @@ int nd_handle_data_pkt(struct sk_buff *skb)
 	// printk("dport:%d\n", ntohs(inet_sk(sk)->inet_dport));
 	// printk("skb seq:%u\n", ND_SKB_CB(skb)->seq);
 	// printk("skb address:%p\n", skb);
-	if(sk) {
+	if(sk) {//查找成功，进行处理，这里sk是与用户进行交互的虚拟套接字
 		dsk = nd_sk(sk);
 		// iph = ip_hdr(skb);
- 		bh_lock_sock(sk);
-		if(sk->sk_state != ND_ESTABLISH){
+ 		bh_lock_sock(sk);//处理时首先对于该虚拟套接字上锁
+		if(sk->sk_state != ND_ESTABLISH){//如果套接字状态不是建立状态，丢弃数据包
 			bh_unlock_sock(sk);
 			goto drop;
 		}
 		/* To Do: check sk_hol_queue */
-		skb_queue_walk_safe(&dsk->receiver.sk_hol_queue, wait_skb, tmp) {
+		skb_queue_walk_safe(&dsk->receiver.sk_hol_queue, wait_skb, tmp) {//遍历sk_hol_queue，为什么要遍历？？当前不是处理的skb吗？
+			//sk_hol_queue暂存了乱序到达的数据包，以及超过窗口范围的数据包
 			/* this might underestimate the current buffer size if socket is handling its backlog */
-			if(ND_SKB_CB(wait_skb)->end_seq - (u32)atomic_read(&dsk->receiver.rcv_nxt) >=  nd_window_size(dsk)) {
+			if(ND_SKB_CB(wait_skb)->end_seq - (u32)atomic_read(&dsk->receiver.rcv_nxt) >=  nd_window_size(dsk)) {//检查窗口范围
 				continue;
 			}
+			//检查到wait_skb在窗口范围内，对其移除并进行处理
 			__skb_unlink(wait_skb, &dsk->receiver.sk_hol_queue);
-			atomic_sub(wait_skb->truesize, &tcp_sk(ND_SKB_CB(wait_skb)->queue->sock->sk)->hol_alloc);
-			atomic_sub(wait_skb->len, &tcp_sk(ND_SKB_CB(wait_skb)->queue->sock->sk)->hol_len);
+			atomic_sub(wait_skb->truesize, &tcp_sk(ND_SKB_CB(wait_skb)->queue->sock->sk)->hol_alloc);//减少队列的占用内存
+			atomic_sub(wait_skb->len, &tcp_sk(ND_SKB_CB(wait_skb)->queue->sock->sk)->hol_len);//减少队列的数据长度
 			// printk("reduce hol alloc:%d\n", atomic_read(&tcp_sk(wait_skb->sk)->hol_alloc));
 			if(atomic_read(&tcp_sk(ND_SKB_CB(wait_skb)->queue->sock->sk)->hol_alloc) == 0) {
+				//为什么等到hol_alloc被分配完了之后才进行发送ACK？？？
+				//等待队列空了标识当前的队列的乱序数据包已经处理完了，此时才算有接收窗口可以接收新的数据包，所以此时才发送ACK
+				//在传入当前的skb的queue上通知执行回ACK，仍然基于work_struct
+				//注意这里是skb所属的队列通过其队列的socket发送ACK，而不是当前的socket
+				//并且发送的时候是直接调用__send_ack直接告诉了期待的下一个序列号，而不是利用skb的序列号（已经被更改）
 				if(ndt_conn_is_latency(ND_SKB_CB(skb)->queue)) {
 					queue_work_on(queue_cpu(ND_SKB_CB(skb)->queue), ndt_conn_wq_lat, &ND_SKB_CB(skb)->queue->delay_ack_work);
 				} else {
@@ -1166,8 +1176,8 @@ int nd_handle_data_pkt(struct sk_buff *skb)
 					hrtimer_cancel(&ND_SKB_CB(skb)->queue->hol_timer);
 				}
 			}		
-			ND_SKB_CB(wait_skb)->queue = NULL;
-			nd_handle_data_pkt_lock(sk, wait_skb);
+			ND_SKB_CB(wait_skb)->queue = NULL;//为什么要清空queue？？？？是因为接收的Channel任务已经完成了吗？？？
+			nd_handle_data_pkt_lock(sk, wait_skb);//对于wait_skb进行处理
 
 		}
         // ret = 0;
@@ -1175,7 +1185,7 @@ int nd_handle_data_pkt(struct sk_buff *skb)
 		/* this might underestimate the current buffer size if socket is handling its backlog */
 		/* this part might needed to be changed later, because rcv_nxt */
 		if(ND_SKB_CB(skb)->end_seq - (u32)atomic_read(&dsk->receiver.rcv_nxt) < nd_window_size(dsk)) {
-			nd_handle_data_pkt_lock(sk, skb);
+			nd_handle_data_pkt_lock(sk, skb);//在窗口范围内，进行处理
 			// printk("handle data pkt lock seq:%u rcv next:%u core:%d\n",
 			// 	ND_SKB_CB(skb)->seq, (u32)atomic_read(&dsk->receiver.rcv_nxt),  raw_smp_processor_id());	
 			// printk("rcv_nxt:%u\n", (u32)atomic_read(&dsk->receiver.rcv_nxt));
@@ -1189,9 +1199,9 @@ int nd_handle_data_pkt(struct sk_buff *skb)
 			atomic_add(skb->len, &tcp_sk(ND_SKB_CB(skb)->queue->sock->sk)->hol_len);
 
 			/* add to hol skb to the socket wait queue */
-			__skb_queue_tail(&dsk->receiver.sk_hol_queue, skb);
+			__skb_queue_tail(&dsk->receiver.sk_hol_queue, skb);//否则放入hol队列
 			/* add to wait queue flags */
-			test_and_set_bit(ND_WAIT_DEFERRED, &sk->sk_tsq_flags);
+			test_and_set_bit(ND_WAIT_DEFERRED, &sk->sk_tsq_flags);//设置标志位，标识存在需要延迟处理的乱序/超过窗口的数据包
 			// printk("add hol alloc:%d  seq:%u rcv next:%u copied seq:%u core:%d\n", atomic_read(&tcp_sk(ND_SKB_CB(skb)->queue->sock->sk)->hol_alloc),
 			// 	ND_SKB_CB(skb)->seq, (u32)atomic_read(&dsk->receiver.rcv_nxt),  (u32)atomic_read(&dsk->receiver.copied_seq),  raw_smp_processor_id());
 			// printk("rmem alloc:%d backlog len:%d \n", atomic_read(&sk->sk_rmem_alloc), sk->sk_backlog.len );	
@@ -1210,7 +1220,7 @@ int nd_handle_data_pkt(struct sk_buff *skb)
 	    // printk("seq num:%u\n", ND_SKB_CB(skb)->seq);
 	    // printk("discard packet:%d\n", __LINE__);
 		// skb_dump(KERN_WARNING, skb, false);
-		sk_drops_add(sk, skb);
+		sk_drops_add(sk, skb);//设置丢包计数
 		goto drop;
 	}
 
@@ -1416,41 +1426,42 @@ EXPORT_SYMBOL(nd_release_cb);
 
 /* split skb and push back the new skb into head of the queue */
 int nd_split(struct sk_buff_head* queue, struct sk_buff* skb, int need_bytes) {
+	//截取前面的 need_bytes 字节保留在原 skb 中，剩余部分放入新数据包，
 	struct sk_buff* new_skb;
 	int bytes = ND_HEADER_MAX_SIZE, len;
 	if(skb->len < need_bytes)
 		return -ENOMEM;
-	if(skb->len == need_bytes)
+	if(skb->len == need_bytes)//正好为需要的长度，没有产生新的skb，直接返回
 		return 0;
 	/* first split new skb */
 	/* this part might need to be changed */
-	if(skb_headlen(skb) > need_bytes) {
-		bytes +=  skb_headlen(skb) - need_bytes;
+	if(skb_headlen(skb) > need_bytes) {//这里直接用headlen标识直接用指针指向的一大片的内存而不涉及frag_list，即优先处理线性部分
+		bytes +=  skb_headlen(skb) - need_bytes;//新的skb的长度，此时数据直接放到线性缓冲区里？？？
 	}
 	// printk("alloc bytes:%d\n", bytes);
-	new_skb = alloc_skb(bytes, GFP_ATOMIC);
+	new_skb = alloc_skb(bytes, GFP_ATOMIC);//alloc_skb(unsigned int size, gfp_t gfp_mask)中的size标识了线性缓冲区的大小，以字节为单位
 	if(!new_skb)
 		WARN_ON(true);
 	// pr_info("reach here:%d\n", __LINE__);
 	// skb_dump(KERN_WARNING, skb, false);
 
 	/* set page pool for new_skb */
-	skb_shinfo(new_skb)->page_pool = skb_shinfo(skb)->page_pool;
+	skb_shinfo(new_skb)->page_pool = skb_shinfo(skb)->page_pool;//保持数据页的来源一致，方便再后续释放或者处理数据页时能够被正确引用
 	/* set the network header, but not tcp header */
 	skb_put(new_skb, sizeof(struct iphdr));
 
 	skb_reset_network_header(new_skb);
 
-	memcpy(skb_network_header(new_skb), skb_network_header(skb), sizeof(struct iphdr));
+	memcpy(skb_network_header(new_skb), skb_network_header(skb), sizeof(struct iphdr));//设置新数据包的网络头部（直接将原数据包的头部复制过去）
 	skb_pull(new_skb, sizeof(struct iphdr));
 	/* change the truesize */
 	len = skb->len - need_bytes;
-	new_skb->truesize += len;
-	skb->truesize -= len;
-	skb_split(skb, new_skb, need_bytes);
-	ND_SKB_CB(new_skb)->has_old_frag_list = 0;
+	new_skb->truesize += len;//新数据包长度增加len
+	skb->truesize -= len;//原数据包长度减少len
+	skb_split(skb, new_skb, need_bytes);//原来的skb的need_bytes字节保留，剩余数据放入新数据包new_skb
+	ND_SKB_CB(new_skb)->has_old_frag_list = 0;//原skb经过nd_queue_origin_skb，没有frag_list
 	ND_SKB_CB(new_skb)->orig_offset = 0;
-	skb_queue_head(queue, new_skb);
+	skb_queue_head(queue, new_skb);//新的skb入队
 	// pr_info("reach here:%d\n", __LINE__);
 	// skb_dump(KERN_WARNING, new_skb, false);
 	return 0; 
@@ -1460,38 +1471,43 @@ int nd_split(struct sk_buff_head* queue, struct sk_buff* skb, int need_bytes) {
 	TCP to clean the cloned skbs;
 */
 static void nd_queue_origin_skb(struct sk_buff_head* queue, struct sk_buff *skb) {
+	//对于skb进行处理，清理和调整数据包的偏移和frag_list，将清理后数据包插入指定队列
 	struct sk_buff *list_skb, *list_skb_next, *list_skb_prev = NULL;
-	if(ND_SKB_CB(skb)->orig_offset) {
+	if(ND_SKB_CB(skb)->orig_offset) {//清理数据包的初始偏移量，使得偏移量为0，数据指针直接指向数据
 		/* fraglist could change */
-	 	WARN_ON(!pskb_pull(skb, ND_SKB_CB(skb)->orig_offset));
+	 	WARN_ON(!pskb_pull(skb, ND_SKB_CB(skb)->orig_offset));//从skb的数据缓冲区中移除指定长度的前置数据，并更新相关元信息
 		// __skb_pull(skb, ND_SKB_CB(skb)->orig_offset);
 		ND_SKB_CB(skb)->orig_offset = 0;
 
 	}
 	if(ND_SKB_CB(skb)->has_old_frag_list) {
+		//标识当前的skb是否包含了没有处理的分片列表（frag_list），将一个通过sh_info附带了很多skb的skb结构体拆分成一个个skb
+		//将新的结构体放入了队列之后还会被新一轮枚举到？？所以不用担心sh_info嵌套的情况？？？
 		ND_SKB_CB(skb)->has_old_frag_list = 0;
 		list_skb = skb_shinfo(skb)->frag_list;
 		skb_shinfo(skb)->frag_list = NULL;
-		while(list_skb) {
-			if(refcount_read(&list_skb->users) > 1)
+		while(list_skb) {//遍历frag_list，从中取出每一个skb
+			if(refcount_read(&list_skb->users) > 1)//检查引用计数？？？
 				WARN_ON(true);
-			ND_SKB_CB(list_skb)->has_old_frag_list = 0;
+			ND_SKB_CB(list_skb)->has_old_frag_list = 0;//这里实际中skb_shinfo->frag_list不会嵌套
 			ND_SKB_CB(list_skb)->orig_offset = 0;
 			list_skb_next = list_skb->next;
-			skb->truesize -= list_skb->truesize;
+			skb->truesize -= list_skb->truesize;//更新主skb相应的数据
 			skb->data_len -= list_skb->len;
 			skb->len -= list_skb->len;
 			if(list_skb_prev == NULL)
-				 __skb_queue_head(queue, list_skb);
+				 __skb_queue_head(queue, list_skb);//当前分片为第一个分片，直接插入队列头部
 			else
 				__skb_queue_after(queue, list_skb_prev, list_skb);
-			list_skb_prev = list_skb;
+			list_skb_prev = list_skb;//不断向下遍历
 			list_skb = list_skb_next;
 		}
 	}
-
 }
+
 int nd_split_and_merge(struct sk_buff_head* queue, struct sk_buff* skb, int need_bytes, bool coalesce) {
+	//从queue中提取数据包（skb），将不足的数据（need_bytes）补充到当前的 skb 中，使其满足协议解析的需求
+	//这里由于queue的数据都来自于tcp->receive_queue中将大skb拆分得到的，所以保证是有序的
 	struct sk_buff* new_skb, *head;
 	int delta = 0;
  	bool fragstolen = false;
@@ -1501,15 +1517,15 @@ int nd_split_and_merge(struct sk_buff_head* queue, struct sk_buff* skb, int need
 		/* skb_split only handles non-header part */
 		fragstolen = false;
 		delta = 0;
-		new_skb =  __skb_dequeue(queue);
+		new_skb =  __skb_dequeue(queue);//不断取出新的skb
 		if(!new_skb)
 			return -ENOMEM;
 		// if(skb_cloned(new_skb))
 		// 	WARN_ON(true);
-		nd_queue_origin_skb(queue, new_skb);
+		nd_queue_origin_skb(queue, new_skb);//从队列头部取出新的skb，对其进行处理(矫正指针指向数据)，这里可能来自于之前的receive_queue，也有可能来自于skb的frag_list
 		// pr_info("new_skb->len:%d\n", new_skb->len);
 		if(new_skb->len > need_bytes)
-			nd_split(queue, new_skb, need_bytes);
+			nd_split(queue, new_skb, need_bytes);//数据包进行分割，此时new_skb中恰好包含了所需的数据量（有可能还是不够），多余的数据量被放在了queue中
 		need_bytes -= new_skb->len;
 		// pr_info("reach here:%d\n", __LINE__);
 		// pr_info("new_skb->len:%d\n", new_skb->len);
@@ -1545,6 +1561,7 @@ int nd_split_and_merge(struct sk_buff_head* queue, struct sk_buff* skb, int need
 			// pr_info("reach here:%d\n", __LINE__);
 			if(!skb_shinfo(head)->frag_list) {
 				skb_shinfo(head)->frag_list = new_skb;
+				//将新的skb放入到head的frag_list中，这样做的目的是什么呢？为什么要先通过queue_origin_skb进行重新组织（主要是使得指针直接指向数据）？
 				ND_SKB_CB(head)->tail = new_skb;
 				// pr_info("reach here:%d\n", __LINE__);
 
@@ -1556,17 +1573,16 @@ int nd_split_and_merge(struct sk_buff_head* queue, struct sk_buff* skb, int need
                 //                 pr_info("ND_SKB_CB(head)->tail:%p\n", ND_SKB_CB(head)->tail);
                 //                 pr_info("ND_SKB_CB(head)->tail->next:%p\n", ND_SKB_CB(head)->tail->next);
 				ND_SKB_CB(head)->tail->next = new_skb;
-				ND_SKB_CB(head)->tail = new_skb;
+				ND_SKB_CB(head)->tail = new_skb;//插入frag_list的尾部
                 // pr_info("reach here:%d\n", __LINE__);
-
 			}
 			// skb = new_skb;
 			/* don't increment truesize and len of head */
 			// pr_info("reach here:%d\n", __LINE__);
 			head->truesize += new_skb->truesize;
 			head->data_len += new_skb->len;
-			head->len += new_skb->len;
-			ND_SKB_CB(head)->count += 1;
+			head->len += new_skb->len;//更新相关的数据
+			ND_SKB_CB(head)->count += 1;//frag_list中skb的数量
 		// }
 	}
 	if(need_bytes > 0)
@@ -1603,7 +1619,11 @@ static void reparse_skb(struct sk_buff* skb) {
 }
 
 int pass_to_vs_layer(struct ndt_conn_queue *ndt_queue, struct sk_buff_head* queue) {
-	struct sock *sk = ndt_queue->sock->sk;
+	//传入的为所属的ndt_queue及其ndt_conn_queue->receive_queue
+	//从ndt_conn_queue中不断取出数据包，并且传送给Virtual NetWwork System进行处理
+	//传入的queue为对应ndt_queue的receive_queue
+	//主要的目的是将TCP的skb_list转化为完整、独立的nhd_list(将多个小skb拼接为多个完整的独立的自定义协议的报文)
+	struct sock *sk = ndt_queue->sock->sk;//获得发送过来的套接字标识？？？
 	struct sk_buff *skb;
 	struct ndhdr* nh;
 	int need_bytes = 0;
@@ -1612,36 +1632,39 @@ int pass_to_vs_layer(struct ndt_conn_queue *ndt_queue, struct sk_buff_head* queu
 	bool hol = false;
 
 	// WARN_ON(queue == NULL);
-	while ((skb = __skb_dequeue(queue)) != NULL) {
+	while ((skb = __skb_dequeue(queue)) != NULL) {//遍历接受队列，不断取出skb
 		// pr_info("%d skb->len:%d\n",__LINE__,  skb->len);
 		// pr_info("!skb_has_frag_list(skb): %d\n", (!skb_has_frag_list(skb)));
 		if(skb_cloned(skb))
 			WARN_ON(true);
 		nd_queue_origin_skb(queue, skb);
+		//首先将当前的skb的指针调整，并且将shinfo_list中附带的skb全部拆分到queue中等待后续的同步调整
+		//将所有的skb都拆分出来放到queue(ndt_conn_queue->receive_queue)中，这里可能会有乱序？？？
 
 		// pr_info("start processing\n");
 		// pr_info("skb->len:%d\n", skb->len);
-		if (!pskb_may_pull(skb, sizeof(struct ndhdr))) {
-			need_bytes = sizeof(struct ndhdr) - skb->len;
+		if (!pskb_may_pull(skb, sizeof(struct ndhdr))) {//检查是否至少包含一个ndhdr的长度，并且确保skb的数据指针指向数据
+			//确保当前数据包头部数据完整性，数据包头部数据可能由于分片等原因分散在多个skb中，导致单个skb不包含完整的头部
+			need_bytes = sizeof(struct ndhdr) - skb->len;//距离拼凑出完整的头部还需要的字节数
 			if(need_bytes < 0)
 				WARN_ON(true);
 			// WARN_ON(need_bytes < 0);
 			// pr_info("skb->len:%d\n", skb->len);
 			// pr_info("reach here: %d\n", __LINE__);
-			ret = nd_split_and_merge(queue, skb, need_bytes, true);
+			ret = nd_split_and_merge(queue, skb, need_bytes, true);//从queue中提取并合并当前skb后续的数据包
 			/* No space for header . */
 			if(ret == -ENOMEM) {
 				goto push_back;
 				// pr_info("reach here: %d\n", __LINE__);
 			}
 			/* pull again */
-			pskb_may_pull(skb, sizeof(struct ndhdr));
+			pskb_may_pull(skb, sizeof(struct ndhdr));//填充之后重新调整指针，确保data指向实际数据开始的部分
 		}
 		// pr_info("skb->len:%d\n", skb->len);
 		// pr_info("skb->headlen:%d\n", skb_headlen(skb));
 		/* reset the transport layer header as nd header; and ignore TCP header */
-		skb_set_transport_header(skb, 0);
-		nh = nd_hdr(skb);
+		skb_set_transport_header(skb, 0);//设置协议头部并且解析，调用 skb_set_transport_header，将传输层头部指针设置为数据起始处
+		nh = nd_hdr(skb);//将skb数据包头部解析为自定义协议
 		// skb_dump(KERN_WARNING, skb, false);
 		// WARN_ON(nh->type != DATA && nh->type != SYNC);
 		/* this layer could do sort of GRO stuff later */
@@ -1657,11 +1680,12 @@ int pass_to_vs_layer(struct ndt_conn_queue *ndt_queue, struct sk_buff_head* queu
 			}
 
 			need_bytes = (int)(ntohs(nh->len)) + sizeof(struct ndhdr) - skb->len;
+			//一个自定义类型nd_hdr头部被还原出来之后，其头部指针包含了其总共的数据段的长度，继续通过nd_split_and_merge进行补全
 			// pr_info("ntohs(nh->len):%d\n", ntohs(nh->len));
 			// pr_info("ND_SKB_CB(skb)->total_len:%d\n", ND_SKB_CB(skb)->total_len);
 			// pr_info("LINE:%d need bytes:%d\n", __LINE__,  need_bytes);
 			if(need_bytes > 0) {
-				ret = nd_split_and_merge(queue, skb, need_bytes, false);
+				ret = nd_split_and_merge(queue, skb, need_bytes, false);//进行分片合并
 				if(ret == -ENOMEM) {
 					// pr_info("go to push back\n");
 					goto push_back;
@@ -1669,14 +1693,14 @@ int pass_to_vs_layer(struct ndt_conn_queue *ndt_queue, struct sk_buff_head* queu
 				}
 			}
 			if(need_bytes < 0) {
-				nd_split(queue, skb, ntohs(nh->len) + sizeof(struct ndhdr));
+				nd_split(queue, skb, ntohs(nh->len) + sizeof(struct ndhdr));//如果包含了太多的内容，将多余的内容放入新的skb中
 				// ND_SKB_CB(skb)->total_len += need_bytes;
 			}
 			/* reparse skb */
 			reparse_skb(skb);
 		}else {
 			/* this split should always be suceessful */
-			nd_split(queue, skb, sizeof(struct ndhdr));
+			nd_split(queue, skb, sizeof(struct ndhdr));//如果是其他类型（如ACK，FIN等类型的控制报文），则仅仅保留当前的ndhdr信息
 		}
 		/* pass to the vs layer; local irq should be disabled */
 		// skb_dump(KERN_WARNING, skb, false);
@@ -1690,7 +1714,7 @@ int pass_to_vs_layer(struct ndt_conn_queue *ndt_queue, struct sk_buff_head* queu
 		// pr_info("receive new ack seq num :%u\n", ntohl(nh->grant_seq));
 		// pr_info("total len:%u\n", ND_SKB_CB(skb)->total_len);
 		// WARN_ON(READ_ONCE(sk->sk_rx_dst) == NULL);
-		skb_dst_set_noref(skb, ndt_queue->dst);
+		skb_dst_set_noref(skb, ndt_queue->dst);//将目标缓存设置为 ndt_queue->dst
 		/* To Do: add reference count for sk in the future */
 		if(nh->type == DATA)
 			ND_SKB_CB(skb)->queue = ndt_queue;
@@ -1708,9 +1732,9 @@ int pass_to_vs_layer(struct ndt_conn_queue *ndt_queue, struct sk_buff_head* queu
 		// 	pr_info("reach here:%d\n", __LINE__);
 			// skb_dump(KERN_WARNING, skb, false);
 		
-		local_bh_disable();
+		local_bh_disable();//关闭软中断
 		/* pass to the virutal socket layer */
-		ret = nd_rcv(skb);
+		ret = nd_rcv(skb);//调用nd_recv，针对一个个独立有序组织好的ndhd包进行处理
 		/* To Do: add hrtimer if fails to adding to the socket and break the loop; */
 		// if(ret == -1) {
 		// 	int sdif = inet_sdif(skb);
@@ -1759,7 +1783,7 @@ skip_vsk:
 		//  }
 	}
 	return 0;
-push_back:
+push_back://之前的解析出了问题，直接塞回去重新解析
 	// printk("push back skb\n");
 	skb_queue_head(queue, skb);
 	return 0;

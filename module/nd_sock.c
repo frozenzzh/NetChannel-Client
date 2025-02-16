@@ -897,12 +897,9 @@ EXPORT_SYMBOL(nd_sk_accept);
 // EXPORT_SYMBOL(nd_sk_reqsk_queue_drop);
 
 
-struct request_sock *nd_reqsk_alloc(const struct request_sock_ops *ops,
-				      struct sock *sk_listener,
-				      bool attach_listener)
-{
-	struct request_sock *req = reqsk_alloc(ops, sk_listener,
-					       attach_listener);
+struct request_sock *nd_reqsk_alloc(const struct request_sock_ops *ops, struct sock *sk_listener, bool attach_listener)
+{	//分配并初始化一个新的请求套接字标识正在建立中的连接
+	struct request_sock *req = reqsk_alloc(ops, sk_listener, attach_listener);
 
 	if (req) {
 		struct inet_request_sock *ireq = inet_rsk(req);
@@ -971,23 +968,20 @@ struct sock *nd_sk_reqsk_queue_add(struct sock *sk,
 }
 EXPORT_SYMBOL(nd_sk_reqsk_queue_add);
 
-static void nd_v4_init_req(struct request_sock *req,
-                            const struct sock *sk_listener,
-                            struct sk_buff *skb)
-{
-	    struct inet_request_sock *ireq = inet_rsk(req);
-        // struct net *net = sock_net(sk_listener);
-
-        sk_rcv_saddr_set(req_to_sk(req), ip_hdr(skb)->daddr);
-        sk_daddr_set(req_to_sk(req), ip_hdr(skb)->saddr);
-        ireq->ir_rmt_port = nd_hdr(skb)->source;
-        ireq->ir_num = ntohs(nd_hdr(skb)->dest);
-        ireq->ir_mark = inet_request_mark(sk_listener, skb);
-		ireq->no_srccheck = inet_sk(sk_listener)->transparent;
-		/* Note: tcp_v6_init_req() might override ir_iif for link locals */
-		ireq->ir_iif = inet_request_bound_dev_if(sk_listener, skb);
-        // RCU_INIT_POINTER(ireq->ireq_opt, nd_v4_save_options(net, skb));
-		refcount_set(&req->rsk_refcnt, 1);
+static void nd_v4_init_req(struct request_sock *req, const struct sock *sk_listener,  struct sk_buff *skb)
+{	//初始化请求套接字req，并且根据skb设置一些参数如源、目的地址、端口等
+	struct inet_request_sock *ireq = inet_rsk(req);
+    // struct net *net = sock_net(sk_listener);
+    sk_rcv_saddr_set(req_to_sk(req), ip_hdr(skb)->daddr);
+    sk_daddr_set(req_to_sk(req), ip_hdr(skb)->saddr);
+    ireq->ir_rmt_port = nd_hdr(skb)->source;
+    ireq->ir_num = ntohs(nd_hdr(skb)->dest);
+    ireq->ir_mark = inet_request_mark(sk_listener, skb);
+	ireq->no_srccheck = inet_sk(sk_listener)->transparent;
+	/* Note: tcp_v6_init_req() might override ir_iif for link locals */
+	ireq->ir_iif = inet_request_bound_dev_if(sk_listener, skb);
+    // RCU_INIT_POINTER(ireq->ireq_opt, nd_v4_save_options(net, skb));
+	refcount_set(&req->rsk_refcnt, 1);
 }
 
 
@@ -1103,10 +1097,8 @@ void inet_sk_rx_dst_set(struct sock *sk, const struct sk_buff *skb)
 /*
  * Receive flow sync pkt: create new socket and push this to the accept queue
  */
-struct sock *nd_create_con_sock(struct sock *sk, struct sk_buff *skb,
-				  struct request_sock *req,
-				  struct dst_entry *dst)
-{
+struct sock *nd_create_con_sock(struct sock *sk, struct sk_buff *skb, struct request_sock *req, struct dst_entry *dst)
+{	//建立新的连接套接字并初始化
 	struct inet_request_sock *ireq;
 	struct inet_sock *newinet;
 	// struct nd_sock *newdp;
@@ -1117,7 +1109,7 @@ struct sock *nd_create_con_sock(struct sock *sk, struct sk_buff *skb,
 	if (sk_acceptq_is_full(sk))
 		goto exit_overflow;
 
-	newsk = nd_create_openreq_child(sk, req, skb);
+	newsk = nd_create_openreq_child(sk, req, skb);//创立新的连接套接字
 
 	/* this init function may be used later */
 	nd_init_sock(newsk);
@@ -1202,7 +1194,7 @@ struct sock* nd_conn_request(struct sock *sk, struct sk_buff *skb)
 	/* sk_acceptq_is_full(sk) should be
 	 * the same as nd_sk_reqsk_is_full in ND.
 	 */
-	if (sk_acceptq_is_full(sk)) {
+	if (sk_acceptq_is_full(sk)) {//监听套接字的接收队列是否已满
 		goto drop;
 	}
 
@@ -1214,7 +1206,7 @@ struct sock* nd_conn_request(struct sock *sk, struct sk_buff *skb)
 	/* Initialize the request sock `*/
 	nd_v4_init_req(req, sk, skb);
 
-	if (security_inet_conn_request(sk, skb, req))
+	if (security_inet_conn_request(sk, skb, req))//安全检查
 		goto drop_and_free;
 
 	// reqsk_put(req);
